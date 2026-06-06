@@ -3,8 +3,8 @@ export const BOARD_CELLS = BOARD_SIZE * BOARD_SIZE;
 export const EMPTY = -1;
 
 export const START_POINTS = {
-  A: { id: "A", x: 4, y: 4 },
-  B: { id: "B", x: 9, y: 9 },
+  A: { id: "A", x: 0, y: 0 },
+  B: { id: "B", x: 13, y: 13 },
 };
 
 export const PLAYERS = [
