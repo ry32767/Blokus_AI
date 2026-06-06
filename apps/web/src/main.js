@@ -213,6 +213,26 @@ function undo() {
   render();
 }
 
+function skipTurn() {
+  if (!isHumanTurn() || gameState.status !== "playing" || thinking) return;
+  const skippedPlayer = gameState.currentPlayer;
+  undoStack.push(structuredClone(gameState));
+  gameState = {
+    ...gameState,
+    currentPlayer: skippedPlayer === 0 ? 1 : 0,
+    turn: gameState.turn + 1,
+    moveHistory: gameState.moveHistory.concat({
+      ply: gameState.turn + 1,
+      move: { kind: "skip", player: skippedPlayer },
+    }),
+  };
+  hoverCell = null;
+  selectedPieceId = gameState.remainingPieces[gameState.currentPlayer][0] || selectedPieceId;
+  selectedOrientationIndex = 0;
+  statusMessage = `${PLAYERS[skippedPlayer].label} skipped. ${currentPlayerLabel()} to move.`;
+  render();
+}
+
 function rotateSelected(step = 1) {
   const count = currentOrientations().length;
   selectedOrientationIndex = (selectedOrientationIndex + step + count) % count;
@@ -385,6 +405,12 @@ function renderBoard() {
         <span>${currentPlayerLabel()} turn</span>
         <span>${legalMoves.length} legal ${canPass ? "pass" : "moves"}</span>
       </div>
+      <div class="board-actions">
+        <button id="rotate-top" ${!isHumanTurn() ? "disabled" : ""}>Rotate</button>
+        <button id="flip-top" ${!isHumanTurn() ? "disabled" : ""}>Flip</button>
+        <button id="skip-turn" ${!isHumanTurn() || thinking ? "disabled" : ""}>Skip</button>
+        <button id="pass-top" ${!canPass || !isHumanTurn() ? "disabled" : ""}>Pass</button>
+      </div>
       <div class="board-grid">${cells.join("")}</div>
       <p class="rule-message">${previewResult?.reason || statusMessage}</p>
       <p class="guide-message">Green dots show every place this piece can legally start. Hovering a cell shows the full footprint from that position.</p>
@@ -485,9 +511,6 @@ function renderControls() {
       <div class="button-row">
         <button id="new-game">New Game</button>
         <button id="undo" ${undoStack.length === 0 || thinking ? "disabled" : ""}>Undo</button>
-        <button id="rotate" ${!isHumanTurn() ? "disabled" : ""}>Rotate</button>
-        <button id="flip" ${!isHumanTurn() ? "disabled" : ""}>Flip</button>
-        <button id="pass" ${!passMove || !isHumanTurn() ? "disabled" : ""}>Pass</button>
         <button id="toggle-ai" ${!isAiVsAiMode() || gameState.status !== "playing" ? "disabled" : ""}>${paused ? "Run" : "Pause"}</button>
         <button id="step-ai" ${!isAiVsAiMode() || gameState.status !== "playing" || thinking ? "disabled" : ""}>Step</button>
         <button id="retry-ai" ${isHumanVsHumanMode() || gameState.status !== "playing" || thinking || !aiHalted ? "disabled" : ""}>Retry AI</button>
@@ -552,7 +575,9 @@ function renderLog() {
           const move = record.move;
           const body = move.kind === "pass"
             ? "pass"
-            : `${move.pieceId} at ${move.x + 1},${move.y + 1}`;
+            : move.kind === "skip"
+              ? "skip"
+              : `${move.pieceId} at ${move.x + 1},${move.y + 1}`;
           return `<li><span>#${record.ply}</span><strong>${PLAYERS[move.player].label}</strong><span>${body}</span></li>`;
         }).join("") || `<li class="muted">No moves yet.</li>`}
       </ol>
@@ -629,8 +654,9 @@ function bindEvents() {
 
   document.querySelector("#new-game")?.addEventListener("click", resetGame);
   document.querySelector("#undo")?.addEventListener("click", undo);
-  document.querySelector("#rotate")?.addEventListener("click", () => rotateSelected(1));
-  document.querySelector("#flip")?.addEventListener("click", () => rotateSelected(-1));
+  document.querySelector("#rotate-top")?.addEventListener("click", () => rotateSelected(1));
+  document.querySelector("#flip-top")?.addEventListener("click", () => rotateSelected(-1));
+  document.querySelector("#skip-turn")?.addEventListener("click", skipTurn);
   document.querySelector("#copy-json")?.addEventListener("click", copyGameJson);
   document.querySelector("#load-json")?.addEventListener("click", loadGameJson);
   document.querySelector("#toggle-ai")?.addEventListener("click", () => {
@@ -648,7 +674,7 @@ function bindEvents() {
     statusMessage = "AI resumed.";
     render();
   });
-  document.querySelector("#pass")?.addEventListener("click", () => {
+  document.querySelector("#pass-top")?.addEventListener("click", () => {
     const legalMoves = generateLegalMoves(gameState);
     if (legalMoves.length === 1 && legalMoves[0].kind === "pass") applyGameMove(legalMoves[0]);
   });
