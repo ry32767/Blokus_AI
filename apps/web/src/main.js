@@ -16,7 +16,7 @@ import {
 import { decideFallbackMove, normalizeAiConfig } from "./ai/difficulty.js";
 
 const app = document.querySelector("#app");
-const settingsKey = "blokus-ai-duo-settings-v1";
+const settingsKey = "blokus-ai-duo-settings-v2";
 
 let gameState = createInitialState("chooseStart");
 let undoStack = [];

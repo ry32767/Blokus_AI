@@ -20,6 +20,12 @@ function createReducedBranchState() {
   return state;
 }
 
+function moveSignature(move) {
+  return move.kind === "place"
+    ? `${move.pieceId}:${move.orientationGlobalId}:${move.x},${move.y}`
+    : move.kind;
+}
+
 suite.test("difficulty normalization maps legacy engine names", () => {
   assert.equal(normalizeAiConfig({ engine: "random" }).difficulty, "easy");
   assert.equal(normalizeAiConfig({ engine: "heuristic" }).difficulty, "normal");
@@ -59,6 +65,26 @@ suite.test("every difficulty handles a midgame state legally", async () => {
     });
     assert.equal(isLegalMove(state, decision.move), true, `${difficulty} should stay legal in midgame`);
   }
+});
+
+suite.test("difficulty choice changes decisions on a representative midgame", async () => {
+  let state = createInitialState("fixedStart");
+  for (let i = 0; i < 8; i += 1) {
+    state = applyMove(state, generateLegalMoves(state)[0]);
+  }
+
+  const signatures = new Set();
+  for (const difficulty of AI_DIFFICULTIES) {
+    const decision = await decideDifficultyMove(state, {
+      engine: difficulty,
+      difficulty,
+      timeLimitMs: 600,
+      maxThinkingMs: 600,
+    });
+    signatures.add(moveSignature(decision.move));
+  }
+
+  assert.ok(signatures.size >= 2, "expected at least two distinct moves across difficulty levels");
 });
 
 suite.test("beam search returns a legal move", async () => {
