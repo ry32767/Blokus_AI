@@ -13,7 +13,7 @@ import {
   isLegalMove,
   scoreState,
 } from "../../../packages/core/src/index.js";
-import { decideDifficultyMove } from "./ai/difficulty.js";
+import { decideDifficultyMove, normalizeAiConfig } from "./ai/difficulty.js";
 
 const app = document.querySelector("#app");
 const settingsKey = "blokus-ai-duo-settings-v1";
@@ -48,14 +48,23 @@ function loadSettings() {
     humanPlayer: 0,
     startPolicy: "chooseStart",
     aiConfig: [
-      { engine: "heuristic", maxThinkingMs: 900, simulations: 96 },
-      { engine: "heuristic", maxThinkingMs: 900, simulations: 96 },
+      { engine: "normal", maxThinkingMs: 900, simulations: 96 },
+      { engine: "normal", maxThinkingMs: 900, simulations: 96 },
     ],
     aiSpeed: 500,
   };
   try {
     const saved = JSON.parse(localStorage.getItem(settingsKey));
-    return { ...defaults, ...saved, aiConfig: saved?.aiConfig || defaults.aiConfig };
+    const merged = { ...defaults, ...saved, aiConfig: saved?.aiConfig || defaults.aiConfig };
+    return {
+      ...merged,
+      aiConfig: merged.aiConfig.map((entry, index) => ({
+        ...normalizeAiConfig({
+          ...defaults.aiConfig[index],
+          ...entry,
+        }),
+      })),
+    };
   } catch {
     return defaults;
   }
@@ -470,27 +479,36 @@ function renderControls() {
 
 function engineOptions(selected) {
   return [
-    ["random", "Random"],
-    ["heuristic", "Heuristic"],
-    ["mcts", "MCTS"],
-    ["policy_value_mcts", "PolicyValueMCTS"],
+    ["easy", "Easy"],
+    ["normal", "Normal"],
+    ["hard", "Hard"],
+    ["expert", "Expert"],
   ].map(([value, label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`).join("");
 }
 
 function renderStats() {
   const stats = lastAiStats;
   const emptyMessage = isHumanVsHumanMode() ? "Human vs Human mode: AI stats are idle." : "No AI move yet.";
+  const entries = stats ? [
+    ["Difficulty", stats.difficulty ?? "-"],
+    ["Engine", stats.engine ?? "-"],
+    ["Strategy", stats.strategy ?? stats.fallback ?? "-"],
+    ["Time", stats.thinkingMs != null ? `${stats.thinkingMs} ms` : "-"],
+    ["Legal", stats.legalMoves ?? "-"],
+    ["Piece", stats.selectedPieceId || (stats.moveKind === "pass" ? "pass" : "-")],
+    ["Depth", stats.depth ?? "-"],
+    ["Beam", stats.beamWidth ?? "-"],
+    ["Nodes", stats.nodes ?? "-"],
+    ["Sims", stats.simulations ?? "-"],
+    ["TT Hits", stats.tableHits ?? "-"],
+    ["Value", stats.value ?? "-"],
+  ] : [];
   return `
     <section class="stats-panel">
       <h2>AI Stats</h2>
       ${stats ? `
         <dl>
-          <div><dt>Engine</dt><dd>${stats.engine}${stats.fallback ? ` -> ${stats.fallback}` : ""}</dd></div>
-          <div><dt>Time</dt><dd>${stats.thinkingMs} ms</dd></div>
-          <div><dt>Legal</dt><dd>${stats.legalMoves}</dd></div>
-          <div><dt>Piece</dt><dd>${stats.selectedPieceId || "-"}</dd></div>
-          <div><dt>Sims</dt><dd>${stats.simulations ?? "-"}</dd></div>
-          <div><dt>Value</dt><dd>${stats.value ?? "-"}</dd></div>
+          ${entries.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}
         </dl>
       ` : `<p class="muted">${emptyMessage}</p>`}
     </section>
