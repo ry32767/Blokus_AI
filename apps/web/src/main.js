@@ -560,6 +560,27 @@ function renderLog() {
   `;
 }
 
+function renderResultOverlay() {
+  if (gameState.status !== "finished") return "";
+  const scores = scoreState(gameState);
+  const winner = getWinner(gameState);
+  const headline = winner === null ? "Draw Game" : `${PLAYERS[winner].label} Wins`;
+  const detail = winner === null
+    ? `${scores[0]} - ${scores[1]}`
+    : `${PLAYERS[0].label} ${scores[0]}  |  ${PLAYERS[1].label} ${scores[1]}`;
+
+  return `
+    <div class="result-overlay" role="status" aria-live="polite">
+      <div class="result-burst" aria-hidden="true"></div>
+      <div class="result-card">
+        <p class="result-kicker">Match Complete</p>
+        <h2>${headline}</h2>
+        <p class="result-score">${detail}</p>
+      </div>
+    </div>
+  `;
+}
+
 function render(allowAi = true) {
   const finished = gameState.status === "finished";
   app.innerHTML = `
@@ -583,6 +604,7 @@ function render(allowAi = true) {
         ${renderLog()}
       </div>
     </main>
+    ${renderResultOverlay()}
   `;
   bindEvents();
   if (allowAi) queueMicrotask(maybeStartAiTurn);

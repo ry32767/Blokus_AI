@@ -1,14 +1,16 @@
 :root {
   color-scheme: light;
-  --bg: #f6f4ef;
+  --bg: #f1ede2;
   --surface: #ffffff;
-  --surface-2: #eef3ef;
+  --surface-2: #e8efe9;
   --ink: #1f2522;
   --muted: #68716c;
   --line: #cfd8d2;
   --black-piece: #283039;
-  --white-piece: #f8faf7;
-  --white-piece-line: #9aa49d;
+  --white-piece: #fff2d6;
+  --white-piece-line: #a77e39;
+  --board-empty: #b8c8bc;
+  --board-empty-line: rgba(70, 85, 75, 0.35);
   --accent: #1f8a70;
   --accent-2: #d95f43;
   --warning: #b42318;
@@ -262,7 +264,7 @@ h2 {
   overflow: hidden;
   border: 2px solid #59625c;
   border-radius: 8px;
-  background: #cbd6cf;
+  background: #8ea394;
 }
 
 .board-cell {
@@ -270,23 +272,23 @@ h2 {
   min-height: 0;
   width: 100%;
   height: 100%;
-  border: 1px solid rgba(89, 98, 92, 0.35);
+  border: 1px solid var(--board-empty-line);
   border-radius: 0;
-  background: #edf1ec;
+  background: var(--board-empty);
   padding: 0;
 }
 
 .board-cell.start-point {
   background:
     radial-gradient(circle at center, rgba(31, 138, 112, 0.48) 0 21%, transparent 23%),
-    #edf1ec;
+    var(--board-empty);
 }
 
 .board-cell.legal-target {
   background:
     radial-gradient(circle at center, rgba(31, 138, 112, 0.48) 0 18%, transparent 20%),
     linear-gradient(180deg, rgba(31, 138, 112, 0.14), rgba(31, 138, 112, 0.06)),
-    #edf1ec;
+    var(--board-empty);
   box-shadow: inset 0 0 0 2px rgba(31, 138, 112, 0.42);
 }
 
@@ -294,7 +296,7 @@ h2 {
   background:
     radial-gradient(circle at center, rgba(31, 138, 112, 0.68) 0 18%, transparent 20%),
     linear-gradient(180deg, rgba(31, 138, 112, 0.2), rgba(31, 138, 112, 0.1)),
-    #edf1ec;
+    var(--board-empty);
   box-shadow: inset 0 0 0 2px rgba(31, 138, 112, 0.68);
 }
 
@@ -310,7 +312,9 @@ h2 {
 
 .board-cell.player-1 {
   background: var(--white-piece);
-  box-shadow: inset 0 0 0 1px var(--white-piece-line);
+  box-shadow:
+    inset 0 0 0 2px rgba(167, 126, 57, 0.85),
+    inset 0 0 0 4px rgba(255, 255, 255, 0.42);
 }
 
 .board-cell.preview-legal {
@@ -453,6 +457,102 @@ input[type="range"] {
   color: var(--muted);
 }
 
+.result-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.result-burst {
+  position: absolute;
+  width: min(72vw, 640px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.8) 0 12%, rgba(255, 255, 255, 0) 55%),
+    conic-gradient(
+      from 0deg,
+      rgba(31, 138, 112, 0.5),
+      rgba(217, 95, 67, 0.46),
+      rgba(22, 99, 199, 0.38),
+      rgba(31, 138, 112, 0.5)
+    );
+  filter: blur(16px);
+  opacity: 0;
+  animation: result-burst-in 900ms ease-out forwards;
+}
+
+.result-card {
+  position: relative;
+  min-width: min(88vw, 460px);
+  padding: 28px 30px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 18px;
+  background: rgba(24, 31, 29, 0.9);
+  box-shadow: 0 32px 70px rgba(17, 24, 21, 0.35);
+  color: #f7faf8;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(14px) scale(0.92);
+  animation: result-card-in 720ms cubic-bezier(0.2, 0.9, 0.2, 1) 120ms forwards;
+}
+
+.result-kicker {
+  margin-bottom: 8px;
+  color: rgba(247, 250, 248, 0.76);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.result-card h2 {
+  margin-bottom: 10px;
+  font-size: clamp(2rem, 5vw, 3.7rem);
+}
+
+.result-score {
+  margin-bottom: 0;
+  color: rgba(247, 250, 248, 0.92);
+  font-size: clamp(1rem, 2.2vw, 1.3rem);
+  font-weight: 700;
+}
+
+@keyframes result-card-in {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.92);
+  }
+
+  60% {
+    opacity: 1;
+    transform: translateY(-6px) scale(1.03);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes result-burst-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+
+  35% {
+    opacity: 0.75;
+  }
+
+  100% {
+    opacity: 0.3;
+    transform: scale(1.15);
+  }
+}
+
 @media (max-width: 1040px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -500,5 +600,11 @@ input[type="range"] {
 
   .piece-button {
     min-height: 56px;
+  }
+
+  .result-card {
+    min-width: 0;
+    width: min(92vw, 420px);
+    padding: 22px 20px;
   }
 }

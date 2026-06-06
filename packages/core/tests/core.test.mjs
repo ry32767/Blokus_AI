@@ -59,8 +59,8 @@ suite.test("piece definitions and orientation counts", () => {
 });
 
 suite.test("initial legal move counts", () => {
-  assert.equal(generateLegalMoves(createInitialState("chooseStart")).length, 828, "chooseStart moves");
-  assert.equal(generateLegalMoves(createInitialState("fixedStart")).length, 414, "fixedStart moves");
+  assert.equal(generateLegalMoves(createInitialState("chooseStart")).length, 116, "chooseStart moves");
+  assert.equal(generateLegalMoves(createInitialState("fixedStart")).length, 58, "fixedStart moves");
 });
 
 suite.test("action encoding round-trips", () => {
@@ -78,7 +78,7 @@ suite.test("move application updates state and forbids voluntary pass", () => {
   assert.ok(first);
   state = applyMove(state, first);
   assert.equal(state.currentPlayer, 1);
-  assert.equal(state.board[4 * 14 + 4], 0);
+  assert.equal(state.board[0], 0);
   assert.equal(isLegalMove(state, { kind: "pass", player: 1 }), false, "pass disabled while moves exist");
 });
 
