@@ -254,6 +254,19 @@ h2 {
   font-size: 0.9rem;
 }
 
+.board-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.board-actions button {
+  min-width: 88px;
+  min-height: 40px;
+  padding: 0 14px;
+  font-weight: 700;
+}
+
 .board-grid {
   display: grid;
   grid-template-columns: repeat(14, minmax(20px, 1fr));
@@ -588,6 +601,11 @@ input[type="range"] {
 
   .board-grid {
     width: 100%;
+  }
+
+  .board-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .control-row {
