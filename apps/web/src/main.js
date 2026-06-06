@@ -1,11 +1,9 @@
 import {
   BOARD_SIZE,
-  PASS_ACTION,
   PLAYERS,
   START_POINTS,
   applyMove,
   createInitialState,
-  encodeAction,
   explainPlacement,
   generateLegalMoves,
   getCellsForMove,
@@ -14,7 +12,7 @@ import {
   isLegalMove,
   scoreState,
 } from "../../../packages/core/src/index.js";
-import { decideAiMove } from "./ai/engines.js";
+import { decideDifficultyMove } from "./ai/difficulty.js";
 
 const app = document.querySelector("#app");
 const settingsKey = "blokus-ai-duo-settings-v1";
@@ -68,7 +66,9 @@ function saveSettings() {
 
 function createAiWorker() {
   try {
-    const nextWorker = new Worker("./workers/aiWorker.js", { type: "module" });
+    const nextWorker = new Worker(new URL("./workers/aiWorker.js", import.meta.url), {
+      type: "module",
+    });
     nextWorker.postMessage({ type: "INIT" });
     return nextWorker;
   } catch {
@@ -217,7 +217,7 @@ function loadGameJson() {
 }
 
 function askWorker(state, config) {
-  if (!worker) return decideAiMove(state, config);
+  if (!worker) return decideDifficultyMove(state, config);
   const requestId = crypto.randomUUID();
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -506,9 +506,11 @@ function bindEvents() {
     const [x, y] = button.dataset.board.split(",").map(Number);
     button.addEventListener("mouseenter", () => {
       hoverCell = { x, y };
-      render(false);
     });
-    button.addEventListener("click", () => handleBoardClick(x, y));
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      handleBoardClick(x, y);
+    });
   }
 
   document.querySelectorAll("[data-piece]").forEach((button) => {
