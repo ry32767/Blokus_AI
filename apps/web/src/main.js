@@ -31,6 +31,18 @@ let statusMessage = "Ready.";
 let settings = loadSettings();
 let worker = createAiWorker();
 
+function isHumanVsHumanMode() {
+  return settings.mode === "HUMAN_VS_HUMAN";
+}
+
+function isHumanVsAiMode() {
+  return settings.mode === "HUMAN_VS_AI";
+}
+
+function isAiVsAiMode() {
+  return settings.mode === "AI_VS_AI";
+}
+
 function loadSettings() {
   const defaults = {
     mode: "HUMAN_VS_AI",
@@ -92,13 +104,15 @@ function currentPreviewMove(cell = hoverCell) {
 
 function isHumanTurn() {
   if (gameState.status !== "playing") return false;
-  if (settings.mode === "AI_VS_AI") return false;
+  if (isHumanVsHumanMode()) return true;
+  if (isAiVsAiMode()) return false;
   return gameState.currentPlayer === Number(settings.humanPlayer);
 }
 
 function isAiTurn() {
   if (gameState.status !== "playing") return false;
-  if (settings.mode === "AI_VS_AI") return !paused;
+  if (isHumanVsHumanMode()) return false;
+  if (isAiVsAiMode()) return !paused;
   return !isHumanTurn();
 }
 
@@ -110,7 +124,7 @@ function resetGame() {
   hoverCell = null;
   lastAiStats = null;
   statusMessage = "New game started.";
-  paused = settings.mode !== "AI_VS_AI";
+  paused = !isAiVsAiMode();
   render();
 }
 
@@ -353,13 +367,14 @@ function renderControls() {
         <label>
           Mode
           <select id="mode">
+            <option value="HUMAN_VS_HUMAN" ${settings.mode === "HUMAN_VS_HUMAN" ? "selected" : ""}>Human vs Human</option>
             <option value="HUMAN_VS_AI" ${settings.mode === "HUMAN_VS_AI" ? "selected" : ""}>Human vs AI</option>
             <option value="AI_VS_AI" ${settings.mode === "AI_VS_AI" ? "selected" : ""}>AI vs AI</option>
           </select>
         </label>
         <label>
           Human
-          <select id="human-player" ${settings.mode === "AI_VS_AI" ? "disabled" : ""}>
+          <select id="human-player" ${!isHumanVsAiMode() ? "disabled" : ""}>
             <option value="0" ${Number(settings.humanPlayer) === 0 ? "selected" : ""}>Black</option>
             <option value="1" ${Number(settings.humanPlayer) === 1 ? "selected" : ""}>White</option>
           </select>
@@ -375,19 +390,19 @@ function renderControls() {
       <div class="control-row">
         <label>
           Black AI
-          <select data-ai-engine="0">
+          <select data-ai-engine="0" ${isHumanVsHumanMode() ? "disabled" : ""}>
             ${engineOptions(settings.aiConfig[0].engine)}
           </select>
         </label>
         <label>
           White AI
-          <select data-ai-engine="1">
+          <select data-ai-engine="1" ${isHumanVsHumanMode() ? "disabled" : ""}>
             ${engineOptions(settings.aiConfig[1].engine)}
           </select>
         </label>
         <label>
           Speed
-          <input id="ai-speed" type="range" min="0" max="1500" step="100" value="${settings.aiSpeed}" />
+          <input id="ai-speed" type="range" min="0" max="1500" step="100" value="${settings.aiSpeed}" ${isHumanVsHumanMode() ? "disabled" : ""} />
         </label>
       </div>
       <div class="button-row">
@@ -396,8 +411,8 @@ function renderControls() {
         <button id="rotate" ${!isHumanTurn() ? "disabled" : ""}>Rotate</button>
         <button id="flip" ${!isHumanTurn() ? "disabled" : ""}>Flip</button>
         <button id="pass" ${!passMove || !isHumanTurn() ? "disabled" : ""}>Pass</button>
-        <button id="toggle-ai" ${settings.mode !== "AI_VS_AI" || gameState.status !== "playing" ? "disabled" : ""}>${paused ? "Run" : "Pause"}</button>
-        <button id="step-ai" ${settings.mode !== "AI_VS_AI" || gameState.status !== "playing" || thinking ? "disabled" : ""}>Step</button>
+        <button id="toggle-ai" ${!isAiVsAiMode() || gameState.status !== "playing" ? "disabled" : ""}>${paused ? "Run" : "Pause"}</button>
+        <button id="step-ai" ${!isAiVsAiMode() || gameState.status !== "playing" || thinking ? "disabled" : ""}>Step</button>
       </div>
       <div class="button-row secondary">
         <button id="copy-json">Copy Game JSON</button>
@@ -422,6 +437,7 @@ function engineOptions(selected) {
 
 function renderStats() {
   const stats = lastAiStats;
+  const emptyMessage = isHumanVsHumanMode() ? "Human vs Human mode: AI stats are idle." : "No AI move yet.";
   return `
     <section class="stats-panel">
       <h2>AI Stats</h2>
@@ -434,7 +450,7 @@ function renderStats() {
           <div><dt>Sims</dt><dd>${stats.simulations ?? "-"}</dd></div>
           <div><dt>Value</dt><dd>${stats.value ?? "-"}</dd></div>
         </dl>
-      ` : `<p class="muted">No AI move yet.</p>`}
+      ` : `<p class="muted">${emptyMessage}</p>`}
     </section>
   `;
 }
@@ -522,7 +538,8 @@ function bindEvents() {
 
   document.querySelector("#mode")?.addEventListener("change", (event) => {
     settings.mode = event.target.value;
-    paused = settings.mode !== "AI_VS_AI";
+    paused = !isAiVsAiMode();
+    lastAiStats = null;
     saveSettings();
     render();
   });
@@ -562,7 +579,7 @@ document.addEventListener("keydown", (event) => {
     const move = currentPreviewMove();
     if (move && isHumanTurn() && explainPlacement(gameState, move).legal) applyGameMove(move);
   }
-  if (event.code === "Space" && settings.mode === "AI_VS_AI") {
+  if (event.code === "Space" && isAiVsAiMode()) {
     event.preventDefault();
     paused = !paused;
     render();

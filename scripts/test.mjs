@@ -1,0 +1,6 @@
+import coreSuite from "../packages/core/tests/core.test.mjs";
+import aiSuite from "../apps/web/tests/ai.test.mjs";
+import workerSuite from "../apps/web/tests/worker.test.mjs";
+import { runSuites } from "../tests/testHarness.mjs";
+
+await runSuites([coreSuite, aiSuite, workerSuite]);
