@@ -165,10 +165,12 @@ export function evaluateState(state, player) {
 
 export function evaluateMoveQuick(state, player, move) {
   if (move.kind === "pass") {
-    const baseline = evaluateState(state, player);
-    return baseline - 50;
+    return -50;
   }
 
+  const opponent = otherPlayer(player);
+  const beforeMyCorners = countCornerCandidates(state, player);
+  const beforeOppCorners = countCornerCandidates(state, opponent);
   const next = applyMove(state, move);
   const cells = getCellsForMove(move);
   const sizeBonus = cells.length;
@@ -178,8 +180,24 @@ export function evaluateMoveQuick(state, player, move) {
     return sum + (7 - Math.max(dx, dy));
   }, 0);
   const openingLargePieceBonus = state.turn < 10 ? pieceSize(move.pieceId) : 0;
+  const edgeTouches = cells.filter((cell) => (
+    cell.x === 0 || cell.y === 0 || cell.x === BOARD_SIZE - 1 || cell.y === BOARD_SIZE - 1
+  )).length;
+  const afterMyCorners = countCornerCandidates(next, player);
+  const afterOppCorners = countCornerCandidates(next, opponent);
+  const [scoreA, scoreB] = scoreState(next);
+  const myScore = player === 0 ? scoreA : scoreB;
+  const oppScore = player === 0 ? scoreB : scoreA;
 
-  return evaluateState(next, player) + 0.6 * sizeBonus + 0.18 * centerBonus + 0.25 * openingLargePieceBonus;
+  return (
+    8.0 * sizeBonus +
+    1.5 * (afterMyCorners - beforeMyCorners) +
+    1.0 * (beforeOppCorners - afterOppCorners) +
+    0.22 * centerBonus +
+    0.9 * openingLargePieceBonus +
+    0.18 * (myScore - oppScore) -
+    0.45 * edgeTouches
+  );
 }
 
 export function createHeuristicScorer(profile = "strong") {
