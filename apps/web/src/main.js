@@ -103,6 +103,13 @@ function currentPreviewMove(cell = hoverCell) {
   };
 }
 
+function currentPreviewOrigin() {
+  if (!hoverCell || !selectedPieceId || !isHumanTurn() || gameState.status !== "playing") {
+    return null;
+  }
+  return `${hoverCell.x},${hoverCell.y}`;
+}
+
 function currentLegalTargets() {
   if (!isHumanTurn() || gameState.status !== "playing" || !selectedPieceId) {
     return new Set();
@@ -306,6 +313,7 @@ function renderBoard() {
   const previewCells = preview ? getCellsForMove(preview) : [];
   const previewResult = preview ? explainPlacement(gameState, preview) : null;
   const legalTargets = currentLegalTargets();
+  const previewOrigin = currentPreviewOrigin();
   const lastMove = gameState.moveHistory.at(-1)?.move;
   const lastCells = lastMove?.kind === "place" ? getCellsForMove(lastMove) : [];
   const legalMoves = generateLegalMoves(gameState);
@@ -318,6 +326,7 @@ function renderBoard() {
       const isStart = (START_POINTS.A.x === x && START_POINTS.A.y === y) || (START_POINTS.B.x === x && START_POINTS.B.y === y);
       const isLegalTarget = value === EMPTY && legalTargets.has(`${x},${y}`);
       const isPreview = previewCells.some((cell) => cell.x === x && cell.y === y);
+      const isPreviewOrigin = previewOrigin === `${x},${y}`;
       const isLast = lastCells.some((cell) => cell.x === x && cell.y === y);
       const classes = [
         "board-cell",
@@ -325,6 +334,7 @@ function renderBoard() {
         value === 1 ? "player-1" : "",
         isStart ? "start-point" : "",
         isLegalTarget ? "legal-target" : "",
+        isPreviewOrigin ? "preview-origin" : "",
         isPreview ? (previewResult?.legal ? "preview-legal" : "preview-illegal") : "",
         isLast ? "last-move" : "",
       ].filter(Boolean).join(" ");
@@ -342,6 +352,7 @@ function renderBoard() {
       </div>
       <div class="board-grid">${cells.join("")}</div>
       <p class="rule-message">${previewResult?.reason || statusMessage}</p>
+      <p class="guide-message">Green dots show every place this piece can legally start. Hovering a cell shows the full footprint from that position.</p>
     </section>
   `;
 }
@@ -537,6 +548,7 @@ function bindEvents() {
     const [x, y] = button.dataset.board.split(",").map(Number);
     button.addEventListener("mouseenter", () => {
       hoverCell = { x, y };
+      render(false);
     });
     button.addEventListener("pointerdown", (event) => {
       event.preventDefault();
