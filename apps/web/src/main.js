@@ -75,6 +75,13 @@ function saveSettings() {
   localStorage.setItem(settingsKey, JSON.stringify(settings));
 }
 
+function setAiConfig(player, nextPartial) {
+  settings.aiConfig[player] = normalizeAiConfig({
+    ...settings.aiConfig[player],
+    ...nextPartial,
+  });
+}
+
 function createAiWorker() {
   try {
     const nextWorker = new Worker(new URL("./workers/aiWorker.js", import.meta.url), {
@@ -705,7 +712,10 @@ function bindEvents() {
   document.querySelectorAll("[data-ai-engine]").forEach((select) => {
     select.addEventListener("change", (event) => {
       const player = Number(select.dataset.aiEngine);
-      settings.aiConfig[player].engine = event.target.value;
+      setAiConfig(player, {
+        engine: event.target.value,
+        difficulty: event.target.value,
+      });
       aiHalted = false;
       saveSettings();
       render();
