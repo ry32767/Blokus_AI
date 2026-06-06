@@ -1,5 +1,6 @@
 import {
   BOARD_SIZE,
+  EMPTY,
   PLAYERS,
   START_POINTS,
   applyMove,
@@ -100,6 +101,33 @@ function currentPreviewMove(cell = hoverCell) {
     x: cell.x,
     y: cell.y,
   };
+}
+
+function currentLegalTargets() {
+  if (!isHumanTurn() || gameState.status !== "playing" || !selectedPieceId) {
+    return new Set();
+  }
+
+  const targets = new Set();
+  const orientation = selectedOrientation();
+
+  for (let y = 0; y < BOARD_SIZE; y += 1) {
+    for (let x = 0; x < BOARD_SIZE; x += 1) {
+      const move = {
+        kind: "place",
+        player: gameState.currentPlayer,
+        pieceId: selectedPieceId,
+        orientationGlobalId: orientation.globalId,
+        x,
+        y,
+      };
+      if (explainPlacement(gameState, move).legal) {
+        targets.add(`${x},${y}`);
+      }
+    }
+  }
+
+  return targets;
 }
 
 function isHumanTurn() {
@@ -277,6 +305,7 @@ function renderBoard() {
   const preview = currentPreviewMove();
   const previewCells = preview ? getCellsForMove(preview) : [];
   const previewResult = preview ? explainPlacement(gameState, preview) : null;
+  const legalTargets = currentLegalTargets();
   const lastMove = gameState.moveHistory.at(-1)?.move;
   const lastCells = lastMove?.kind === "place" ? getCellsForMove(lastMove) : [];
   const legalMoves = generateLegalMoves(gameState);
@@ -287,6 +316,7 @@ function renderBoard() {
     for (let x = 0; x < BOARD_SIZE; x += 1) {
       const value = gameState.board[y * BOARD_SIZE + x];
       const isStart = (START_POINTS.A.x === x && START_POINTS.A.y === y) || (START_POINTS.B.x === x && START_POINTS.B.y === y);
+      const isLegalTarget = value === EMPTY && legalTargets.has(`${x},${y}`);
       const isPreview = previewCells.some((cell) => cell.x === x && cell.y === y);
       const isLast = lastCells.some((cell) => cell.x === x && cell.y === y);
       const classes = [
@@ -294,6 +324,7 @@ function renderBoard() {
         value === 0 ? "player-0" : "",
         value === 1 ? "player-1" : "",
         isStart ? "start-point" : "",
+        isLegalTarget ? "legal-target" : "",
         isPreview ? (previewResult?.legal ? "preview-legal" : "preview-illegal") : "",
         isLast ? "last-move" : "",
       ].filter(Boolean).join(" ");
