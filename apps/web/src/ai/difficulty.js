@@ -5,25 +5,28 @@ import { chooseMctsMove } from "./mctsAi.js";
 
 export const AI_DIFFICULTIES = ["easy", "normal", "hard", "expert"];
 
+function difficultyFromEngine(engine) {
+  return engine === "random"
+    ? "easy"
+    : engine === "heuristic"
+      ? "normal"
+      : engine === "mcts"
+        ? "hard"
+        : engine === "policy_value_mcts"
+          ? "expert"
+          : engine === "easy"
+            ? "easy"
+            : engine === "normal"
+              ? "normal"
+              : engine === "hard"
+                ? "hard"
+                : engine === "expert"
+                  ? "expert"
+                  : null;
+}
+
 export function normalizeAiConfig(config = {}) {
-  const difficulty = config.difficulty
-    ?? (config.engine === "random"
-      ? "easy"
-      : config.engine === "heuristic"
-        ? "normal"
-        : config.engine === "mcts"
-          ? "hard"
-          : config.engine === "policy_value_mcts"
-            ? "expert"
-            : config.engine === "easy"
-              ? "easy"
-              : config.engine === "normal"
-                ? "normal"
-                : config.engine === "hard"
-                  ? "hard"
-                  : config.engine === "expert"
-                    ? "expert"
-                    : "normal");
+  const difficulty = difficultyFromEngine(config.engine) ?? config.difficulty ?? "normal";
 
   return {
     difficulty,
@@ -37,6 +40,7 @@ export function normalizeAiConfig(config = {}) {
     simulations: config.simulations ?? 128,
     explorationC: config.explorationC ?? 1.2,
     ...config,
+    engine: config.engine ?? difficulty,
     difficulty,
   };
 }

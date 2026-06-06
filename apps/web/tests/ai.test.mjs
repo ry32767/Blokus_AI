@@ -27,6 +27,16 @@ suite.test("difficulty normalization maps legacy engine names", () => {
   assert.equal(normalizeAiConfig({ engine: "policy_value_mcts" }).difficulty, "expert");
 });
 
+suite.test("engine selection overrides stale saved difficulty", () => {
+  const normalized = normalizeAiConfig({
+    engine: "easy",
+    difficulty: "normal",
+    maxThinkingMs: 900,
+  });
+  assert.equal(normalized.difficulty, "easy");
+  assert.equal(normalized.engine, "easy");
+});
+
 suite.test("every difficulty returns a legal opening move", async () => {
   for (const difficulty of ["easy", "normal", "hard", "expert"]) {
     const state = createInitialState("fixedStart");
