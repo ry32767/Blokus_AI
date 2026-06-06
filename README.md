@@ -1,4 +1,4 @@
-# BlokusAI Duo
+﻿# BlokusAI Duo
 
 GitHub Pages で公開できる、2 人制 Blokus Duo 型の静的 AI 対戦アプリです。
 
@@ -120,8 +120,8 @@ workflow の流れ:
 3. `npm ci`
 4. `npm test`
 5. `npm run build`
-6. `dist/` を GitHub Pages artifact として upload
-7. `actions/deploy-pages` で公開
+6. `dist/` を `gh-pages` branch に publish
+7. GitHub Pages の Source を `Deploy from a branch` にして `gh-pages` / `root` を選ぶ
 
 ## Project Pages Base Path
 
