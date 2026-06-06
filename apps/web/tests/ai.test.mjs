@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { createSuite } from "../../../tests/testHarness.mjs";
 import { applyMove, createInitialState, generateLegalMoves, isLegalMove } from "../../../packages/core/src/index.js";
-import { chooseEndgameAlphaBetaMove } from "../src/ai/alphaBetaAi.js";
+import { chooseEndgameAlphaBetaMove, chooseExactEndgameMove } from "../src/ai/alphaBetaAi.js";
 import { chooseBeamSearchMove } from "../src/ai/beamSearchAi.js";
-import { chooseExpertMove, isEndgameSearchable, isOpening } from "../src/ai/expertAi.js";
+import { chooseExpertMove, chooseExpertPlusMove, isEndgameSearchable, isExactSolvable, isOpening } from "../src/ai/expertAi.js";
 import { chooseHeuristicMove } from "../src/ai/heuristicAi.js";
 import { chooseMctsMove } from "../src/ai/mctsAi.js";
-import { TranspositionTable, hashState } from "../src/ai/transpositionTable.js";
+import { totalRemainingPieces, TranspositionTable, hashState } from "../src/ai/transpositionTable.js";
 import { AI_DIFFICULTIES, decideDifficultyMove, normalizeAiConfig } from "../src/ai/difficulty.js";
 
 const suite = createSuite("ai-smoke");
@@ -26,11 +26,23 @@ function moveSignature(move) {
     : move.kind;
 }
 
+function createTinyEndgameState() {
+  let state = createInitialState("fixedStart");
+  for (let i = 0; i < 18; i += 1) {
+    state = applyMove(state, generateLegalMoves(state)[0]);
+  }
+
+  state = structuredClone(state);
+  state.remainingPieces = [["I1", "I2"], ["I1", "I2"]];
+  return state;
+}
+
 suite.test("difficulty normalization maps legacy engine names", () => {
   assert.equal(normalizeAiConfig({ engine: "random" }).difficulty, "easy");
   assert.equal(normalizeAiConfig({ engine: "heuristic" }).difficulty, "normal");
   assert.equal(normalizeAiConfig({ engine: "mcts" }).difficulty, "hard");
   assert.equal(normalizeAiConfig({ engine: "policy_value_mcts" }).difficulty, "expert");
+  assert.equal(normalizeAiConfig({ engine: "expert_plus" }).difficulty, "expert_plus");
 });
 
 suite.test("engine selection overrides stale saved difficulty", () => {
@@ -44,7 +56,7 @@ suite.test("engine selection overrides stale saved difficulty", () => {
 });
 
 suite.test("every difficulty returns a legal opening move", async () => {
-  for (const difficulty of ["easy", "normal", "hard", "expert"]) {
+  for (const difficulty of AI_DIFFICULTIES) {
     const state = createInitialState("fixedStart");
     const decision = await decideDifficultyMove(state, { difficulty, timeLimitMs: 120 });
     assert.equal(isLegalMove(state, decision.move), true, `${difficulty} should return a legal move`);
@@ -121,6 +133,31 @@ suite.test("expert opening branch stays legal", async () => {
   assert.equal(isLegalMove(state, decision.move), true);
   assert.equal(decision.stats.engine, "expert");
   assert.equal(decision.stats.strategy, "heuristic");
+});
+
+suite.test("expert plus opening branch stays legal", async () => {
+  const state = createInitialState("fixedStart");
+  const decision = await chooseExpertPlusMove(state, { difficulty: "expert_plus", timeLimitMs: 200 });
+  assert.equal(isLegalMove(state, decision.move), true);
+  assert.equal(decision.stats.engine, "expert_plus");
+  assert.equal(decision.stats.strategy, "opening_heuristic");
+});
+
+suite.test("expert plus uses exact solver on tiny endgames", async () => {
+  const state = createTinyEndgameState();
+  assert.equal(isExactSolvable(state), true);
+  const decision = await chooseExpertPlusMove(state, { difficulty: "expert_plus", timeLimitMs: 2000 });
+  assert.equal(isLegalMove(state, decision.move), true);
+  assert.equal(decision.stats.engine, "expert_plus");
+  assert.equal(decision.stats.strategy, "exact");
+  assert.equal(decision.stats.exactSolved, true);
+});
+
+suite.test("exact solver returns a legal move", async () => {
+  const state = createTinyEndgameState();
+  const decision = await chooseExactEndgameMove(state, { difficulty: "expert_plus", timeLimitMs: 2000 });
+  assert.equal(isLegalMove(state, decision.move), true);
+  assert.equal(decision.stats.engine, "exact_solver");
 });
 
 suite.test("transposition hashing is stable for identical positions", () => {

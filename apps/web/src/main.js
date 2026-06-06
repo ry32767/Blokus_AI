@@ -540,6 +540,7 @@ function engineOptions(selected) {
     ["normal", "Normal"],
     ["hard", "Hard"],
     ["expert", "Expert"],
+    ["expert_plus", "Expert+"],
   ].map(([value, label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`).join("");
 }
 
@@ -558,6 +559,8 @@ function renderStats() {
     ["Nodes", stats.nodes ?? "-"],
     ["Sims", stats.simulations ?? "-"],
     ["TT Hits", stats.tableHits ?? "-"],
+    ["Exact", stats.exactSolved == null ? "-" : stats.exactSolved ? "yes" : "no"],
+    ["Score Est", stats.finalScoreEstimate ?? "-"],
     ["Value", stats.value ?? "-"],
   ] : [];
   return `
