@@ -13,7 +13,7 @@ import {
   isLegalMove,
   scoreState,
 } from "../../../packages/core/src/index.js";
-import { decideDifficultyMove, normalizeAiConfig } from "./ai/difficulty.js";
+import { decideFallbackMove, normalizeAiConfig } from "./ai/difficulty.js";
 
 const app = document.querySelector("#app");
 const settingsKey = "blokus-ai-duo-settings-v1";
@@ -25,6 +25,7 @@ let selectedOrientationIndex = 0;
 let hoverCell = null;
 let paused = true;
 let thinking = false;
+let aiHalted = false;
 let lastAiStats = null;
 let statusMessage = "Ready.";
 let settings = loadSettings();
@@ -155,6 +156,7 @@ function isHumanTurn() {
 
 function isAiTurn() {
   if (gameState.status !== "playing") return false;
+  if (aiHalted) return false;
   if (isHumanVsHumanMode()) return false;
   if (isAiVsAiMode()) return !paused;
   return !isHumanTurn();
@@ -169,6 +171,7 @@ function resetGame() {
   lastAiStats = null;
   statusMessage = "New game started.";
   paused = !isAiVsAiMode();
+  aiHalted = false;
   render();
 }
 
@@ -185,6 +188,7 @@ function applyGameMove(move, thinkingMs, aiStats) {
     last.thinkingMs = thinkingMs;
     last.aiStats = aiStats;
   }
+  aiHalted = false;
   hoverCell = null;
   selectedPieceId = gameState.remainingPieces[gameState.currentPlayer][0] || selectedPieceId;
   selectedOrientationIndex = 0;
@@ -261,13 +265,14 @@ function loadGameJson() {
 }
 
 function askWorker(state, config) {
-  if (!worker) return decideDifficultyMove(state, config);
+  if (!worker) return decideFallbackMove(state, config);
   const requestId = crypto.randomUUID();
   return new Promise((resolve, reject) => {
+    const requestedBudget = config.timeLimitMs ?? config.maxThinkingMs ?? 1000;
     const timeout = setTimeout(() => {
       worker.removeEventListener("message", onMessage);
       reject(new Error("AI worker timed out."));
-    }, Math.max(2000, (config.maxThinkingMs || 1000) + 1500));
+    }, Math.max(4000, requestedBudget * 5));
 
     function onMessage(event) {
       const response = event.data;
@@ -297,7 +302,28 @@ async function maybeStartAiTurn() {
       applyGameMove(decision.move, decision.stats.thinkingMs, decision.stats);
     }
   } catch (error) {
-    statusMessage = `AI failed: ${error.message}`;
+    if ((error.message || "").includes("timed out")) {
+      const fallbackDecision = await decideFallbackMove(aiState, {
+        ...config,
+        difficulty: "normal",
+        timeLimitMs: 250,
+        maxThinkingMs: 250,
+        shortlistLimit: 10,
+      });
+      if (gameState.turn === aiState.turn && gameState.currentPlayer === aiState.currentPlayer) {
+        lastAiStats = {
+          ...fallbackDecision.stats,
+          difficulty: config.difficulty ?? config.engine ?? fallbackDecision.stats.difficulty,
+          engine: "fallback",
+          strategy: "worker-timeout",
+        };
+        applyGameMove(fallbackDecision.move, fallbackDecision.stats.thinkingMs, lastAiStats);
+        statusMessage = "AI used fallback after worker timeout.";
+      }
+    } else {
+      statusMessage = `AI halted: ${error.message}`;
+      aiHalted = true;
+    }
     worker?.terminate();
     worker = createAiWorker();
   } finally {
@@ -464,6 +490,7 @@ function renderControls() {
         <button id="pass" ${!passMove || !isHumanTurn() ? "disabled" : ""}>Pass</button>
         <button id="toggle-ai" ${!isAiVsAiMode() || gameState.status !== "playing" ? "disabled" : ""}>${paused ? "Run" : "Pause"}</button>
         <button id="step-ai" ${!isAiVsAiMode() || gameState.status !== "playing" || thinking ? "disabled" : ""}>Step</button>
+        <button id="retry-ai" ${isHumanVsHumanMode() || gameState.status !== "playing" || thinking || !aiHalted ? "disabled" : ""}>Retry AI</button>
       </div>
       <div class="button-row secondary">
         <button id="copy-json">Copy Game JSON</button>
@@ -594,6 +621,11 @@ function bindEvents() {
     paused = true;
     render();
   });
+  document.querySelector("#retry-ai")?.addEventListener("click", () => {
+    aiHalted = false;
+    statusMessage = "AI resumed.";
+    render();
+  });
   document.querySelector("#pass")?.addEventListener("click", () => {
     const legalMoves = generateLegalMoves(gameState);
     if (legalMoves.length === 1 && legalMoves[0].kind === "pass") applyGameMove(legalMoves[0]);
@@ -603,11 +635,13 @@ function bindEvents() {
     settings.mode = event.target.value;
     paused = !isAiVsAiMode();
     lastAiStats = null;
+    aiHalted = false;
     saveSettings();
     render();
   });
   document.querySelector("#human-player")?.addEventListener("change", (event) => {
     settings.humanPlayer = Number(event.target.value);
+    aiHalted = false;
     saveSettings();
     render();
   });
@@ -624,6 +658,7 @@ function bindEvents() {
     select.addEventListener("change", (event) => {
       const player = Number(select.dataset.aiEngine);
       settings.aiConfig[player].engine = event.target.value;
+      aiHalted = false;
       saveSettings();
       render();
     });
