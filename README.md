@@ -89,6 +89,7 @@ npm test
 - Easy / Normal の Heuristic AI
 - Hard の Beam Search AI
 - Expert の Hybrid AI
+- Expert+ の exact endgame solver
 - 終盤 Alpha-Beta Search と Transposition Table
 - Worker protocol の `INIT` / `THINK` / `CANCEL`
 - Worker fallback が違法手を安全な合法手へ置き換えること
