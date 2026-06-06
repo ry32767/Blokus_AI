@@ -1,12 +1,11 @@
 import { isLegalMove } from "../../../../packages/core/src/index.js";
-import { decideHeuristic } from "../ai/engines.js";
-import { decideDifficultyMove } from "../ai/difficulty.js";
+import { decideDifficultyMove, decideFallbackMove } from "../ai/difficulty.js";
 
 export async function handleAiWorkerRequest(
   request,
   dependencies = {
     decideMove: decideDifficultyMove,
-    decideFallbackMove: decideHeuristic,
+    decideFallbackMove,
     isLegalMove,
   },
 ) {
