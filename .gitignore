@@ -4,6 +4,11 @@ dist/
 .env.*
 !.env.example
 training/runs/
+training/vendor_py/
+training/data/
+training/checkpoints/
+training/__pycache__/
+*.pyc
 *.log
 coverage/
 .DS_Store

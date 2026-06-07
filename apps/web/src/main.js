@@ -541,6 +541,7 @@ function engineOptions(selected) {
     ["hard", "Hard"],
     ["expert", "Expert"],
     ["expert_plus", "Expert+"],
+    ["learned", "Learned"],
   ].map(([value, label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`).join("");
 }
 

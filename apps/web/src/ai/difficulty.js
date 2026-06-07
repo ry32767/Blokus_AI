@@ -1,9 +1,10 @@
 import { chooseBeamSearchMove } from "./beamSearchAi.js";
 import { chooseExpertMove, chooseExpertPlusMove } from "./expertAi.js";
 import { chooseHeuristicMove } from "./heuristicAi.js";
+import { chooseLearnedMove } from "./learnedAi.js";
 import { chooseMctsMove } from "./mctsAi.js";
 
-export const AI_DIFFICULTIES = ["easy", "normal", "hard", "expert", "expert_plus"];
+export const AI_DIFFICULTIES = ["easy", "normal", "hard", "expert", "expert_plus", "learned"];
 
 function difficultyFromEngine(engine) {
   return engine === "random"
@@ -24,6 +25,8 @@ function difficultyFromEngine(engine) {
                   ? "expert"
                   : engine === "expert_plus"
                     ? "expert_plus"
+                    : engine === "learned"
+                      ? "learned"
                   : null;
 }
 
@@ -35,7 +38,9 @@ export function normalizeAiConfig(config = {}) {
       ? 1500
       : difficulty === "hard"
         ? 800
-        : 300;
+        : difficulty === "learned"
+          ? 500
+          : 300;
 
   return {
     difficulty,
@@ -66,6 +71,8 @@ export async function decideDifficultyMove(state, config = {}) {
       return chooseExpertMove(state, { ...normalized, difficulty: "expert" });
     case "expert_plus":
       return chooseExpertPlusMove(state, { ...normalized, difficulty: "expert_plus" });
+    case "learned":
+      return chooseLearnedMove(state, { ...normalized, difficulty: "learned" });
     case "normal":
     default:
       return chooseHeuristicMove(state, { ...normalized, profile: "strong", difficulty: "normal" });

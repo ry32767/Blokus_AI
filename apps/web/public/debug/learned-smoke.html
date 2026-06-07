@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Learned Smoke</title>
+    <style>
+      body {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        background: #111827;
+        color: #f3f4f6;
+        margin: 0;
+        padding: 24px;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Learned Smoke</h1>
+    <pre id="output">Running...</pre>
+    <script type="module">
+      import {
+        applyMove,
+        createInitialState,
+        generateLegalMoves,
+        isLegalMove,
+      } from "../../../../packages/core/src/index.js";
+      import { chooseExpertMove } from "../../src/ai/expertAi.js";
+      import { chooseLearnedMove } from "../../src/ai/learnedAi.js";
+
+      const output = document.querySelector("#output");
+
+      async function main() {
+        const initialState = createInitialState("fixedStart");
+        const learnedOpening = await chooseLearnedMove(initialState, {
+          difficulty: "learned",
+          timeLimitMs: 500,
+        });
+
+        let humanVsLearnedState = applyMove(initialState, generateLegalMoves(initialState)[0]);
+        const learnedReply = await chooseLearnedMove(humanVsLearnedState, {
+          difficulty: "learned",
+          timeLimitMs: 500,
+        });
+
+        let versusState = createInitialState("fixedStart");
+        const versusLog = [];
+        for (let ply = 0; ply < 8 && versusState.status === "playing"; ply += 1) {
+          const decision = versusState.currentPlayer === 0
+            ? await chooseExpertMove(versusState, { difficulty: "expert", timeLimitMs: 200 })
+            : await chooseLearnedMove(versusState, { difficulty: "learned", timeLimitMs: 500 });
+          versusLog.push({
+            ply,
+            player: versusState.currentPlayer,
+            engine: decision.stats.engine,
+            strategy: decision.stats.strategy,
+            legal: isLegalMove(versusState, decision.move),
+            move: decision.move,
+          });
+          versusState = applyMove(versusState, decision.move);
+        }
+
+        const summary = {
+          learnedOpening: {
+            engine: learnedOpening.stats.engine,
+            strategy: learnedOpening.stats.strategy,
+            fallbackReason: learnedOpening.stats.fallbackReason ?? null,
+            legal: isLegalMove(initialState, learnedOpening.move),
+            move: learnedOpening.move,
+          },
+          humanVsLearned: {
+            engine: learnedReply.stats.engine,
+            strategy: learnedReply.stats.strategy,
+            legal: isLegalMove(humanVsLearnedState, learnedReply.move),
+            move: learnedReply.move,
+          },
+          expertVsLearned: versusLog,
+        };
+
+        output.textContent = JSON.stringify(summary, null, 2);
+        document.body.dataset.status = "ok";
+      }
+
+      main().catch((error) => {
+        output.textContent = JSON.stringify({
+          error: String(error?.message || error),
+          stack: error?.stack || null,
+        }, null, 2);
+        document.body.dataset.status = "error";
+      });
+    </script>
+  </body>
+</html>
