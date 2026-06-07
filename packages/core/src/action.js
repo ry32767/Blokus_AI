@@ -1,4 +1,5 @@
-import { ACTION_SIZE, BOARD_SIZE, PASS_ACTION } from "./constants.js";
+import { BOARD_SIZE } from "./constants.js";
+import { ACTION_SIZE, PASS_ACTION } from "./actionSpace.js";
 import { ORIENTATIONS } from "./orientation.js";
 
 export function encodeAction(move) {

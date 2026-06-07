@@ -3,11 +3,11 @@ import {
   DIAGONAL_DIRS,
   EMPTY,
   ORTHOGONAL_DIRS,
-  PIECE_IDS,
   START_POINTS,
 } from "./constants.js";
 import { cellIndex, cloneBoard, createEmptyBoard, getCell, inBounds, isBoardCellEmpty, setCell } from "./board.js";
 import { getOrientation, getOrientations } from "./orientation.js";
+import { PIECE_IDS } from "./pieceIds.js";
 import { scoreState } from "./scoring.js";
 
 export function other(player) {
