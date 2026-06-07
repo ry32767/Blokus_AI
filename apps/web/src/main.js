@@ -17,6 +17,7 @@ import { decideFallbackMove, normalizeAiConfig } from "./ai/difficulty.js";
 
 const app = document.querySelector("#app");
 const settingsKey = "blokus-ai-duo-settings-v2";
+const resultAnnouncementDurationMs = 3600;
 
 let gameState = createInitialState("chooseStart");
 let undoStack = [];
@@ -27,6 +28,8 @@ let paused = true;
 let thinking = false;
 let aiHalted = false;
 let lastAiStats = null;
+let resultAnnouncement = null;
+let resultAnnouncementTimer = null;
 let statusMessage = "Ready.";
 let settings = loadSettings();
 let worker = createAiWorker();
@@ -94,6 +97,31 @@ function createAiWorker() {
   }
 }
 
+function clearResultAnnouncement() {
+  if (resultAnnouncementTimer !== null) {
+    clearTimeout(resultAnnouncementTimer);
+    resultAnnouncementTimer = null;
+  }
+  resultAnnouncement = null;
+}
+
+function showResultAnnouncement(scores) {
+  const winner = getWinner(gameState);
+  resultAnnouncement = {
+    headline: winner === null ? "Draw Game" : `${PLAYERS[winner].label} Wins`,
+    detail: winner === null
+      ? `${scores[0]} - ${scores[1]}`
+      : `${PLAYERS[0].label} ${scores[0]}  |  ${PLAYERS[1].label} ${scores[1]}`,
+  };
+
+  if (resultAnnouncementTimer !== null) clearTimeout(resultAnnouncementTimer);
+  resultAnnouncementTimer = setTimeout(() => {
+    resultAnnouncementTimer = null;
+    if (!resultAnnouncement) return;
+    resultAnnouncement = null;
+    render(false);
+  }, resultAnnouncementDurationMs);
+}
 function currentPlayerLabel() {
   return PLAYERS[gameState.currentPlayer].label;
 }
@@ -170,6 +198,7 @@ function isAiTurn() {
 }
 
 function resetGame() {
+  clearResultAnnouncement();
   gameState = createInitialState(settings.startPolicy);
   undoStack = [];
   selectedPieceId = "I1";
@@ -200,20 +229,18 @@ function applyGameMove(move, thinkingMs, aiStats) {
   selectedPieceId = gameState.remainingPieces[gameState.currentPlayer][0] || selectedPieceId;
   selectedOrientationIndex = 0;
   const scores = scoreState(gameState);
-  statusMessage =
-    gameState.status === "finished"
-      ? formatFinishedMessage(scores)
-      : `${currentPlayerLabel()} to move.`;
+  if (gameState.status === "finished") {
+    statusMessage = "Match complete.";
+    showResultAnnouncement(scores);
+  } else {
+    clearResultAnnouncement();
+    statusMessage = `${currentPlayerLabel()} to move.`;
+  }
   render();
 }
 
-function formatFinishedMessage(scores) {
-  const winner = getWinner(gameState);
-  if (winner === null) return `Finished. Draw ${scores[0]}-${scores[1]}.`;
-  return `Finished. ${PLAYERS[winner].label} wins ${scores[0]}-${scores[1]}.`;
-}
-
 function undo() {
+  clearResultAnnouncement();
   if (undoStack.length === 0 || thinking) return;
   gameState = undoStack.pop();
   statusMessage = "Undone.";
@@ -284,6 +311,7 @@ function loadGameJson() {
     gameState = parsed.state || parsed;
     if (parsed.settings) settings = { ...settings, ...parsed.settings };
     undoStack = [];
+    clearResultAnnouncement();
     statusMessage = "Game JSON loaded.";
   } catch (error) {
     statusMessage = `Load failed: ${error.message}`;
@@ -597,13 +625,8 @@ function renderLog() {
 }
 
 function renderResultOverlay() {
-  if (gameState.status !== "finished") return "";
-  const scores = scoreState(gameState);
-  const winner = getWinner(gameState);
-  const headline = winner === null ? "Draw Game" : `${PLAYERS[winner].label} Wins`;
-  const detail = winner === null
-    ? `${scores[0]} - ${scores[1]}`
-    : `${PLAYERS[0].label} ${scores[0]}  |  ${PLAYERS[1].label} ${scores[1]}`;
+  if (gameState.status !== "finished" || !resultAnnouncement) return "";
+  const { headline, detail } = resultAnnouncement;
 
   return `
     <div class="result-overlay" role="status" aria-live="polite">
