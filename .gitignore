@@ -6,7 +6,13 @@ dist/
 training/runs/
 training/vendor_py/
 training/data/
+training/dataset/
 training/checkpoints/
+training/reports/
+training/models/
+training/replay_buffer*/
+training/model_registry*/
+training/distributed_queue*/
 training/__pycache__/
 *.pyc
 *.log

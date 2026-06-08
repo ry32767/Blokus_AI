@@ -16,7 +16,7 @@ import {
 import { decideFallbackMove, normalizeAiConfig } from "./ai/difficulty.js";
 
 const app = document.querySelector("#app");
-const settingsKey = "blokus-ai-duo-settings-v2";
+const settingsKey = "blokus-ai-duo-settings-v3";
 const resultAnnouncementDurationMs = 3600;
 
 let gameState = createInitialState("chooseStart");
@@ -122,6 +122,7 @@ function showResultAnnouncement(scores) {
     render(false);
   }, resultAnnouncementDurationMs);
 }
+
 function currentPlayerLabel() {
   return PLAYERS[gameState.currentPlayer].label;
 }
@@ -240,8 +241,8 @@ function applyGameMove(move, thinkingMs, aiStats) {
 }
 
 function undo() {
-  clearResultAnnouncement();
   if (undoStack.length === 0 || thinking) return;
+  clearResultAnnouncement();
   gameState = undoStack.pop();
   statusMessage = "Undone.";
   render();
@@ -570,6 +571,7 @@ function engineOptions(selected) {
     ["expert", "Expert"],
     ["expert_plus", "Expert+"],
     ["learned", "Learned"],
+    ["master", "Master"],
   ].map(([value, label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`).join("");
 }
 

@@ -11,7 +11,7 @@ if str(VENDOR) not in sys.path:
 
 import torch
 
-from policy_model import PolicyNet
+from policy_model import PolicyNet, PolicyValueNet
 
 
 def main():
@@ -23,10 +23,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--out", default=str(ROOT.parent / "apps" / "web" / "public" / "models" / "blokus_policy.onnx"))
+    parser.add_argument("--model-kind", choices=["policy", "policy_value"], default="policy")
     args = parser.parse_args()
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
-    model = PolicyNet()
+    model = PolicyNet() if args.model_kind == "policy" else PolicyValueNet()
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
 
@@ -34,16 +35,28 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     dummy = torch.zeros((1, 51, 14, 14), dtype=torch.float32)
-    torch.onnx.export(
-        model,
-        dummy,
-        output_path,
-        input_names=["input"],
-        output_names=["logits"],
-        opset_version=17,
-        dynamo=False,
-        dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
-    )
+    if args.model_kind == "policy":
+        torch.onnx.export(
+            model,
+            dummy,
+            output_path,
+            input_names=["input"],
+            output_names=["logits"],
+            opset_version=17,
+            dynamo=False,
+            dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
+        )
+    else:
+        torch.onnx.export(
+            model,
+            dummy,
+            output_path,
+            input_names=["input"],
+            output_names=["policy_logits", "value"],
+            opset_version=17,
+            dynamo=False,
+            dynamic_axes={"input": {0: "batch"}, "policy_logits": {0: "batch"}, "value": {0: "batch"}},
+        )
     print(output_path)
 
 

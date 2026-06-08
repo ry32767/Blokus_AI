@@ -13,8 +13,20 @@
     "generate:orientations": "node scripts/generate-orientations.mjs",
     "sync:ort": "node scripts/sync-onnxruntime-assets.mjs",
     "generate:dataset": "node training/generate_dataset.mjs",
+    "generate:trajectory": "node training/critical_state_replay/collect_trajectory.mjs",
+    "generate:critical-replay": "node training/critical_state_replay/build_branch_dataset.mjs",
+    "arena:ai": "node training/run_arena.mjs",
+    "cycle:learned": "node training/run_learning_cycle.mjs",
+    "distributed:selfplay": "node training/run_distributed_selfplay.mjs",
+    "coordinator:selfplay": "node training/run_selfplay_coordinator.mjs",
+    "agent:selfplay": "node training/run_selfplay_agent.mjs",
+    "selfplay:loop": "node training/run_selfplay_loop.mjs",
+    "alphazero:loop": "node training/run_alphazero_loop.mjs",
+    "registry:model": "node training/model_registry_cli.mjs",
     "train:policy": "node scripts/run-python.mjs training/train_policy.py",
-    "export:onnx": "node scripts/run-python.mjs training/export_onnx.py"
+    "train:policy-value": "node scripts/run-python.mjs training/train_policy_value.py",
+    "export:onnx": "node scripts/run-python.mjs training/export_onnx.py",
+    "export:onnx:pv": "node scripts/run-python.mjs training/export_onnx.py --model-kind policy_value"
   },
   "dependencies": {
     "onnxruntime-web": "^1.26.0"

@@ -39,7 +39,7 @@ class PolicyDataset(Dataset):
         state = np.asarray(sample["encoded_state"], dtype=np.float32).reshape(STATE_PLANES, 14, 14)
         mask = np.zeros((ACTION_SIZE,), dtype=np.float32)
         mask[sample["legal_actions"]] = 1.0
-        target = int(sample["expert_selected_action"])
+        target = int(sample.get("selected_action", sample["expert_selected_action"]))
         return (
             torch.from_numpy(state),
             torch.from_numpy(mask),
