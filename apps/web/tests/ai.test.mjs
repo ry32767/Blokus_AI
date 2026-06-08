@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { createSuite } from "../../../tests/testHarness.mjs";
-import { applyMove, createInitialState, generateLegalMoves, isLegalMove } from "../../../packages/core/src/index.js";
+import { ACTION_SIZE, applyMove, createInitialState, encodeAction, generateLegalMoves, isLegalMove } from "../../../packages/core/src/index.js";
 import { chooseEndgameAlphaBetaMove, chooseExactEndgameMove } from "../src/ai/alphaBetaAi.js";
 import { chooseBeamSearchMove } from "../src/ai/beamSearchAi.js";
 import { chooseExpertMove, chooseExpertPlusMove, isEndgameSearchable, isExactSolvable, isOpening } from "../src/ai/expertAi.js";
 import { chooseHeuristicMove } from "../src/ai/heuristicAi.js";
 import { chooseMctsMove } from "../src/ai/mctsAi.js";
+import { chooseMasterMove } from "../src/ai/policyValueMctsAi.js";
 import { totalRemainingPieces, TranspositionTable, hashState } from "../src/ai/transpositionTable.js";
 import { AI_DIFFICULTIES, decideDifficultyMove, normalizeAiConfig } from "../src/ai/difficulty.js";
 
@@ -41,7 +42,7 @@ suite.test("difficulty normalization maps legacy engine names", () => {
   assert.equal(normalizeAiConfig({ engine: "random" }).difficulty, "easy");
   assert.equal(normalizeAiConfig({ engine: "heuristic" }).difficulty, "normal");
   assert.equal(normalizeAiConfig({ engine: "mcts" }).difficulty, "hard");
-  assert.equal(normalizeAiConfig({ engine: "policy_value_mcts" }).difficulty, "expert");
+  assert.equal(normalizeAiConfig({ engine: "policy_value_mcts" }).difficulty, "master");
   assert.equal(normalizeAiConfig({ engine: "expert_plus" }).difficulty, "expert_plus");
 });
 
@@ -111,6 +112,41 @@ suite.test("mcts returns a legal move", async () => {
   const decision = await chooseMctsMove(state, { difficulty: "expert", timeLimitMs: 120, candidateLimit: 12 });
   assert.equal(isLegalMove(state, decision.move), true);
   assert.equal(decision.stats.engine, "mcts");
+});
+
+suite.test("master returns a legal move with a policy-value session", async () => {
+  const state = createReducedBranchState();
+  const legalMoves = generateLegalMoves(state);
+  const logits = new Float32Array(ACTION_SIZE).fill(-100);
+  const preferred = legalMoves[legalMoves.length - 1];
+  logits[encodeAction(preferred)] = 12;
+
+  const decision = await chooseMasterMove(state, {
+    difficulty: "master",
+    timeLimitMs: 80,
+    candidateLimit: 12,
+  }, {
+    ortModule: {
+      Tensor: class Tensor {
+        constructor(type, data, dims) {
+          this.type = type;
+          this.data = data;
+          this.dims = dims;
+        }
+      },
+    },
+    sessionFactory: async () => ({
+      inputNames: ["input"],
+      outputNames: ["policy_logits", "value"],
+      run: async () => ({
+        policy_logits: { data: logits },
+        value: { data: new Float32Array([0.25]) },
+      }),
+    }),
+  });
+
+  assert.equal(isLegalMove(state, decision.move), true);
+  assert.equal(decision.stats.engine, "master");
 });
 
 suite.test("alpha-beta returns a legal move in searchable endgames", async () => {

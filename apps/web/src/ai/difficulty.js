@@ -3,8 +3,9 @@ import { chooseExpertMove, chooseExpertPlusMove } from "./expertAi.js";
 import { chooseHeuristicMove } from "./heuristicAi.js";
 import { chooseLearnedMove } from "./learnedAi.js";
 import { chooseMctsMove } from "./mctsAi.js";
+import { chooseMasterMove } from "./policyValueMctsAi.js";
 
-export const AI_DIFFICULTIES = ["easy", "normal", "hard", "expert", "expert_plus", "learned"];
+export const AI_DIFFICULTIES = ["easy", "normal", "hard", "expert", "expert_plus", "learned", "master"];
 
 function difficultyFromEngine(engine) {
   return engine === "random"
@@ -14,7 +15,7 @@ function difficultyFromEngine(engine) {
       : engine === "mcts"
         ? "hard"
         : engine === "policy_value_mcts"
-          ? "expert"
+          ? "master"
           : engine === "easy"
             ? "easy"
             : engine === "normal"
@@ -27,6 +28,8 @@ function difficultyFromEngine(engine) {
                     ? "expert_plus"
                     : engine === "learned"
                       ? "learned"
+                      : engine === "master"
+                        ? "master"
                   : null;
 }
 
@@ -34,6 +37,8 @@ export function normalizeAiConfig(config = {}) {
   const difficulty = difficultyFromEngine(config.engine) ?? config.difficulty ?? "normal";
   const defaultTimeLimitMs = difficulty === "expert_plus"
     ? 4000
+    : difficulty === "master"
+      ? 2500
     : difficulty === "expert"
       ? 1500
       : difficulty === "hard"
@@ -73,6 +78,8 @@ export async function decideDifficultyMove(state, config = {}) {
       return chooseExpertPlusMove(state, { ...normalized, difficulty: "expert_plus" });
     case "learned":
       return chooseLearnedMove(state, { ...normalized, difficulty: "learned" });
+    case "master":
+      return chooseMasterMove(state, { ...normalized, difficulty: "master" });
     case "normal":
     default:
       return chooseHeuristicMove(state, { ...normalized, profile: "strong", difficulty: "normal" });
