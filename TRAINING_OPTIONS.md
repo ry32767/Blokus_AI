@@ -101,12 +101,42 @@ AI 同士の対局から JSONL dataset を作ります。
 | `--black-model` | none | 黒が `learned` / `master` のときに使う ONNX。 |
 | `--white-model` | none | 白が `learned` / `master` のときに使う ONNX。 |
 | `--policy-target-source` | `auto` | `auto` / `visit` など。MCTS visit 分布を target にしたい場合は `visit`。 |
+| `--seed` | `0` | base seed。parallel 時は worker / game ごとに派生 seed を使います。 |
 | `--parallel` | `1` | 複数 Node process で games を分割生成します。 |
 
 例:
 
 ```bash
-node training/generate_dataset.mjs --games 1000 --parallel 8 --out training/data/expert-1k.jsonl --black-ai expert --white-ai expert --teacher-ms 25
+node training/generate_dataset.mjs --games 1000 --parallel 8 --out training/data/expert-1k.jsonl --black-ai learned --white-ai expert_plus --teacher-ms 25 --black-model apps/web/public/models/blokus_policy.onnx
+```
+
+Parallel checkpoint option:
+
+| option | default | description |
+| --- | ---: | --- |
+| `--checkpoint-percent` | `0` | Parallel generation only. When set to `10`, the output JSONL and `.meta.json` are updated after each 10% of games completes. If interrupted, the latest completed checkpoint remains usable. |
+
+Example:
+
+```bash
+node training/generate_dataset.mjs --games 30000 --parallel 16 --checkpoint-percent 10 --out training/data/expert-plus-sampled-fast-selfplay-30000.jsonl --black-ai expert_plus --white-ai expert_plus --teacher-ms 10 --seed 20260618 --move-temperature 1.8 --move-top-k 8 --move-sampling-plies 8 --move-candidate-pool 24
+```
+
+Teacher move sampling options:
+
+These options are for dataset generation only. They do not change the normal behavior of `expert_plus` or other AI in arena play.
+
+| option | default | description |
+| --- | ---: | --- |
+| `--move-temperature` | `0` | `0` keeps deterministic teacher moves. Use `1.0`-`1.8` to sample among high-ranked legal moves and reduce duplicate games. |
+| `--move-top-k` | `8` | Candidate move count used by `--move-temperature`. |
+| `--move-sampling-plies` | `16` | Number of opening plies where candidate move sampling is enabled. `0` means all plies. |
+| `--move-candidate-pool` | `64` | Maximum number of non-teacher legal moves to score before selecting the sampled top-k candidates. |
+
+Example:
+
+```bash
+node training/generate_dataset.mjs --games 2048 --parallel 16 --out training/data/expert-plus-sampled-selfplay-2048.jsonl --black-ai expert_plus --white-ai expert_plus --teacher-ms 25 --seed 20260615 --move-temperature 1.2 --move-top-k 12 --move-sampling-plies 20 --move-candidate-pool 64
 ```
 
 Learned self-play:
@@ -310,6 +340,8 @@ node training/run_arena.mjs --games 100 --parallel 4 --alpha-ai learned --alpha-
 
 ### `npm run cycle:learned`
 
+node training/run_learning_cycle.mjs --games 500 --black-ai expert_plus --white-ai expert_plus --epochs 10 --evaluation-opponent expert_plus
+
 Dataset 生成、Policy 学習、ONNX export、arena 評価をまとめて実行します。
 
 | option | default | 説明 |
@@ -368,6 +400,11 @@ Dataset 生成、Policy 学習、ONNX export、arena 評価をまとめて実行
 | `--teacher-ms` | `1000` | 各手の思考時間 ms。 |
 | `--difficulty` | `master` | self-play AI。 |
 | `--model-path` | none | model path。 |
+| `--black-ai` | `--difficulty` | 黒番 AI。指定すると `--difficulty` より優先。 |
+| `--white-ai` | `--difficulty` | 白番 AI。指定すると `--difficulty` より優先。 |
+| `--black-model` | `--model-path` | 黒番 AI の ONNX model path。 |
+| `--white-model` | `--model-path` | 白番 AI の ONNX model path。 |
+| `--seed` | `0` | base seed。worker ごとに `baseSeed + workerIndex * 1000003` を使います。 |
 | `--replay-buffer-dir` | `training/replay_buffer` | replay buffer directory。 |
 | `--worker-output-dir` | `training/reports/distributed-selfplay` | worker 出力 directory。 |
 | `--max-buffer-shards` | `64` | replay buffer shard 上限。 |
@@ -375,6 +412,10 @@ Dataset 生成、Policy 学習、ONNX export、arena 評価をまとめて実行
 | `--start-policy` | `fixedStart` | 初期配置方式。 |
 | `--policy-target-source` | `visit` | policy target source。 |
 | `--shard-compression` | `gzip` | shard 圧縮。 |
+
+Teacher move sampling options:
+
+`npm run distributed:selfplay` also accepts `--move-temperature`, `--move-top-k`, `--move-sampling-plies`, and `--move-candidate-pool`. These are passed to each worker and are recorded in replay metadata.
 
 ## Multi-Host Coordinator / Agent
 
@@ -418,13 +459,17 @@ Distributed self-play、replay buffer sampling、Policy-Value 学習、ONNX expo
 | `--workers` | `2` | distributed self-play worker 数。 |
 | `--games` | `20` | iteration ごとの self-play games。 |
 | `--teacher-ms` | `1000` | self-play 思考時間 ms。 |
+| `--seed` | `0` | distributed self-play の base seed。iteration ごとにずらして worker / game seed を派生します。 |
 | `--sample-size` | `4096` | replay buffer から学習 dataset に抽出する最大 sample 数。 |
 | `--epochs` | `1` | Policy-Value 学習 epoch。 |
 | `--batch-size` | `2048` | batch size。 |
 | `--cpu` | false | CPU に固定。 |
 | `--evaluation-games` | `6` | arena 評価 games。 |
 | `--arena-parallel` | `1` | arena 評価を複数 Node process に分割して並列実行。 |
-| `--evaluation-opponent` | active best / `expert` | 評価相手 AI。`expert_plus` / `expert` / `master` など。指定時は active best ではなくこの相手で gate します。 |
+| `--selfplay-ai` | `master` | 学習データ生成で黒番に使う AI。active best / `--initial-model` はこの AI の model として使います。 |
+| `--selfplay-opponent` | same as `--selfplay-ai` | 学習データ生成で白番に使う相手 AI。`expert_plus` / `expert` / `master` / `learned` など。 |
+| `--selfplay-opponent-model` | none | `--selfplay-opponent` が `learned` / `master` のときに使う ONNX。 |
+| `--evaluation-opponent` | active best / `expert` | 評価として戦わせる AI。`expert_plus` / `expert` / `master` / `learned` など。学習 self-play の相手ではありません。 |
 | `--evaluation-opponent-model` | none | 評価相手が `learned` / `master` のときに使う ONNX。 |
 | `--candidate-ms` | `300` | candidate 思考時間 ms。 |
 | `--baseline-ms` | `300` | baseline 思考時間 ms。 |
@@ -433,6 +478,7 @@ Distributed self-play、replay buffer sampling、Policy-Value 学習、ONNX expo
 | `--min-elo-lower-bound-gain` | `0` | active best がある場合の Elo gate 条件。 |
 | `--k-factor` | `24` | Elo 更新の K factor。 |
 | `--publish-best` | false | promote 時に browser default model を上書き。 |
+| `--initial-model` | browser default model | registry に active best がない初回 self-play / baseline 評価に使う policy-value ONNX。active best がある場合は active best を優先します。 |
 | `--replay-buffer-dir` | `training/replay_buffer` | replay buffer directory。 |
 | `--registry-dir` | `training/model_registry` | model registry directory。 |
 | `--base-report-dir` | `training/reports/alphazero` | report root。 |
@@ -442,16 +488,16 @@ Distributed self-play、replay buffer sampling、Policy-Value 学習、ONNX expo
 | `--replay-sample-strategy` | `priority` | replay sampling strategy。 |
 | `--shard-compression` | `gzip` | shard 圧縮。 |
 
-例: `expert_plus` を相手に並列評価する最小 loop。
+例: 初回 self-play に使う model を明示し、`expert_plus` 相手に学習データ生成と並列評価をする場合。
 
 ```bash
-npm run alphazero:loop -- --iterations 1 --workers 2 --games 20 --sample-size 1024 --epochs 1 --evaluation-games 8 --arena-parallel 4 --evaluation-opponent expert_plus --candidate-ms 300 --baseline-ms 300
+node training/run_alphazero_loop.mjs -- --iterations 10 --workers 16 --games 320 --initial-model apps\web\public\models\blokus_policy_value.onnx --sample-size 32768 --max-buffer-samples 200000 --epochs 10 --evaluation-games 96 --arena-parallel 16 --selfplay-ai learned --selfplay-opponent expert_plus --evaluation-opponent expert_plus
 ```
 
-例: 指定した model を `master` 相手として評価する場合。
+Teacher move sampling example:
 
 ```bash
-npm run alphazero:loop -- --iterations 1 --workers 2 --games 20 --sample-size 1024 --epochs 1 --evaluation-games 8 --arena-parallel 4 --evaluation-opponent master --evaluation-opponent-model training/model_registry/models/model-0001.onnx
+node training/run_alphazero_loop.mjs -- --iterations 3 --workers 16 --games 320 --sample-size 32768 --epochs 5 --evaluation-games 64 --arena-parallel 16 --selfplay-ai expert_plus --selfplay-opponent expert_plus --evaluation-opponent expert_plus --move-temperature 1.2 --move-top-k 12 --move-sampling-plies 20 --move-candidate-pool 64
 ```
 
 ## Model Registry

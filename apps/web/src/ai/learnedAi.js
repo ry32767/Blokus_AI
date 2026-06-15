@@ -8,6 +8,7 @@ import {
   generateLegalMoves,
 } from "../../../../packages/core/src/index.js";
 import { chooseExpertMove } from "./expertAi.js";
+import { resolveRng } from "./random.js";
 
 let sessionPromise = null;
 
@@ -44,15 +45,24 @@ async function loadSession(config = {}, deps = {}) {
   return sessionPromise;
 }
 
-function selectBestLegalAction(logits, legalActions) {
+function selectBestLegalAction(logits, legalActions, rng) {
   let bestAction = legalActions[0];
   let bestLogit = Number.NEGATIVE_INFINITY;
+  let ties = 1;
 
   for (const action of legalActions) {
     const value = Number(logits[action] ?? Number.NEGATIVE_INFINITY);
     if (value > bestLogit) {
       bestLogit = value;
       bestAction = action;
+      ties = 1;
+      continue;
+    }
+    if (value === bestLogit) {
+      ties += 1;
+      if (rng() < 1 / ties) {
+        bestAction = action;
+      }
     }
   }
 
@@ -61,6 +71,7 @@ function selectBestLegalAction(logits, legalActions) {
 
 export async function chooseLearnedMove(state, config = {}, deps = {}) {
   const startedAt = now();
+  const rng = resolveRng(config);
   const legalMoves = generateLegalMoves(state);
   if (legalMoves.length === 1 && legalMoves[0].kind === "pass") {
     return {
@@ -93,7 +104,7 @@ export async function chooseLearnedMove(state, config = {}, deps = {}) {
     if (!logits || logits.length !== ACTION_SIZE) {
       throw new Error(`Unexpected logits shape: ${logits?.length ?? "none"}`);
     }
-    const { action, value } = selectBestLegalAction(logits, Array.from(legalByAction.keys()));
+    const { action, value } = selectBestLegalAction(logits, Array.from(legalByAction.keys()), rng);
     return {
       move: legalByAction.get(action),
       stats: {

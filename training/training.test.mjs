@@ -54,6 +54,33 @@ suite.test("master self-play dataset records policy targets", async () => {
   assert.ok(samples.every((sample) => Array.isArray(sample.policy_target_probs) && sample.policy_target_probs.length > 0));
 });
 
+suite.test("dataset generator records seed and duplicate hash summary", async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), "blokus-seeded-dataset-"));
+  const out = join(tempDir, "dataset.jsonl");
+  const summary = await generateDataset({
+    games: 2,
+    out,
+    teacherMs: 10,
+    startPolicy: "fixedStart",
+    blackAi: "easy",
+    whiteAi: "normal",
+    seed: 123,
+    workerId: "worker-test",
+    workerIndex: 2,
+    gameIndexOffset: 10,
+  });
+
+  const meta = JSON.parse(await readFile(`${out}.meta.json`, "utf-8"));
+  assert.equal(summary.seed, 123);
+  assert.equal(meta.seed, 123);
+  assert.equal(meta.workerId, "worker-test");
+  assert.equal(meta.workerIndex, 2);
+  assert.equal(meta.gameIndexOffset, 10);
+  assert.equal(meta.gameHashes.length, 2);
+  assert.equal(meta.duplicateSummary.totalGames, 2);
+  assert.equal(typeof meta.duplicateSummary.duplicateHashRate, "number");
+});
+
 suite.test("arena can compare learned against expert in node", async () => {
   const summary = await runArena({
     games: 2,

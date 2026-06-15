@@ -1,15 +1,15 @@
 import { applyMove, generateLegalMoves } from "../../../../packages/core/src/index.js";
 import { cheapMoveOrderScore, evaluateMoveQuick, evaluateState } from "./evaluation.js";
+import { resolveRng, scoredDescending } from "./random.js";
 import { TranspositionTable, hashState } from "./transpositionTable.js";
 
 function now() {
   return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
-function rankCandidateMoves(state, player, candidateLimit) {
-  return generateLegalMoves(state)
-    .map((move) => ({ move, score: cheapMoveOrderScore(move) }))
-    .sort((a, b) => b.score - a.score)
+function rankCandidateMoves(state, candidateLimit, rng) {
+  return scoredDescending(generateLegalMoves(state), cheapMoveOrderScore, rng)
+    .map(({ item: move, score }) => ({ move, score }))
     .slice(0, candidateLimit);
 }
 
@@ -25,9 +25,9 @@ function createNode(state, move = null, parent = null) {
   };
 }
 
-function ensureUnexpanded(node, rootPlayer, candidateLimit) {
+function ensureUnexpanded(node, rootPlayer, candidateLimit, rng) {
   if (node.unexpanded) return node.unexpanded;
-  node.unexpanded = rankCandidateMoves(node.state, rootPlayer, candidateLimit);
+  node.unexpanded = rankCandidateMoves(node.state, candidateLimit, rng);
   return node.unexpanded;
 }
 
@@ -67,6 +67,7 @@ export async function chooseMctsMove(state, config = {}) {
   const explorationC = config.explorationC ?? 1.2;
   const timeLimitMs = config.timeLimitMs ?? config.maxThinkingMs ?? 1500;
   const table = config.table ?? new TranspositionTable();
+  const rng = resolveRng(config);
 
   if (legalMoves.length === 1 && legalMoves[0].kind === "pass") {
     return {
@@ -92,11 +93,11 @@ export async function chooseMctsMove(state, config = {}) {
   while (now() - startedAt < timeLimitMs) {
     let node = root;
 
-    while (node.children.length > 0 && ensureUnexpanded(node, rootPlayer, candidateLimit).length === 0) {
+    while (node.children.length > 0 && ensureUnexpanded(node, rootPlayer, candidateLimit, rng).length === 0) {
       node = selectChild(node, explorationC);
     }
 
-    const unexpanded = ensureUnexpanded(node, rootPlayer, candidateLimit);
+    const unexpanded = ensureUnexpanded(node, rootPlayer, candidateLimit, rng);
     if (unexpanded.length > 0 && now() - startedAt < timeLimitMs) {
       const { move } = unexpanded.shift();
       const nextState = applyMove(node.state, move);
@@ -130,7 +131,7 @@ export async function chooseMctsMove(state, config = {}) {
 
   let bestChild = root.children[0];
   for (const child of root.children) {
-    if (!bestChild || child.visits > bestChild.visits) {
+    if (!bestChild || child.visits > bestChild.visits || (child.visits === bestChild.visits && rng() < 0.5)) {
       bestChild = child;
     }
   }

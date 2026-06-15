@@ -485,6 +485,20 @@ policy-value self-play、replay buffer sampling、学習、candidate export、ar
 npm run alphazero:loop -- --iterations 1 --workers 4 --games 40 --sample-size 4096 --epochs 2 --evaluation-games 8 --cpu
 ```
 
+評価相手を `expert_plus` などに変える場合:
+
+```bash
+npm run alphazero:loop -- --iterations 1 --workers 4 --games 40 --sample-size 4096 --epochs 2 --evaluation-games 8 --arena-parallel 4 --evaluation-opponent expert_plus
+```
+
+学習データ生成中の相手を `expert_plus` に変える場合:
+
+```bash
+npm run alphazero:loop -- --iterations 1 --workers 4 --games 40 --initial-model apps/web/public/models/blokus_policy_value.onnx --sample-size 4096 --epochs 2 --evaluation-games 8 --selfplay-opponent expert_plus --evaluation-opponent expert_plus
+```
+
+`--evaluation-opponent` は候補 model の評価相手です。self-play 学習中に戦わせる AI ではありません。self-play 学習中の相手は `--selfplay-opponent` で指定します。self-play に使う初期 model は `--initial-model` で指定できます。
+
 流れ:
 
 1. active best model または baseline model で distributed self-play

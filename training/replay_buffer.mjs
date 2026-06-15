@@ -223,12 +223,49 @@ export async function pruneReplayBuffer(bufferDir, options = {}) {
   };
 }
 
-function weightedKeys(entries, random) {
-  return entries.map((entry) => {
-    const weight = Math.max(1e-6, Number(entry.weight ?? 1));
-    const u = Math.max(1e-9, random());
-    return { ...entry, key: Math.pow(u, 1 / weight) };
-  }).sort((a, b) => b.key - a.key);
+function considerWeightedSample(picked, entry, limit) {
+  if (picked.length < limit) {
+    picked.push(entry);
+    return;
+  }
+
+  let minIndex = 0;
+  for (let index = 1; index < picked.length; index += 1) {
+    if (picked[index].key < picked[minIndex].key) minIndex = index;
+  }
+  if (entry.key > picked[minIndex].key) {
+    picked[minIndex] = entry;
+  }
+}
+
+function considerUniformSample(picked, entry, seen, limit, random) {
+  if (picked.length < limit) {
+    picked.push(entry);
+    return;
+  }
+  const swapIndex = Math.floor(random() * seen);
+  if (swapIndex < limit) {
+    picked[swapIndex] = entry;
+  }
+}
+
+async function writeJsonlLines(outputPath, entries) {
+  await mkdir(dirname(outputPath), { recursive: true });
+  const stream = createWriteStream(outputPath, { encoding: "utf-8" });
+  try {
+    for (const entry of entries) {
+      if (!stream.write(`${entry.line}\n`)) {
+        await new Promise((resolve) => stream.once("drain", resolve));
+      }
+    }
+  } finally {
+    await new Promise((resolve, reject) => {
+      stream.end((error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+  }
 }
 
 export async function sampleReplayBufferToDataset(bufferDir, outputPath, options = {}) {
@@ -247,7 +284,9 @@ export async function sampleReplayBufferToDataset(bufferDir, outputPath, options
   const rng = createSeededRandom(seed);
 
   const selectedEntries = activeEntries.filter((entry) => !includeShards || includeShards.has(entry.id));
-  const sampled = [];
+  const picked = [];
+  let seenSamples = 0;
+  const sampleLimit = Math.max(1, maxSamples);
   for (const entry of selectedEntries) {
     const rl = readline.createInterface({
       input: createShardReadStream(entry.file),
@@ -255,24 +294,30 @@ export async function sampleReplayBufferToDataset(bufferDir, outputPath, options
     });
     for await (const line of rl) {
       if (!line.trim()) continue;
-      const sample = JSON.parse(line);
-      const priorityWeight = strategy === "priority"
-        ? entry.priority * parseSamplePriority(sample)
-        : 1;
-      sampled.push({
-        line,
-        shardId: entry.id,
-        weight: priorityWeight,
-      });
+      seenSamples += 1;
+      if (strategy === "priority") {
+        const sample = JSON.parse(line);
+        const weight = entry.priority * parseSamplePriority(sample);
+        const u = Math.max(1e-9, rng());
+        considerWeightedSample(picked, {
+          line,
+          shardId: entry.id,
+          weight,
+          key: Math.pow(u, 1 / Math.max(1e-6, weight)),
+        }, sampleLimit);
+      } else {
+        considerUniformSample(picked, { line, shardId: entry.id }, seenSamples, sampleLimit, rng);
+      }
     }
   }
 
-  const picked = strategy === "priority"
-    ? weightedKeys(sampled, rng).slice(0, Math.min(maxSamples, sampled.length))
-    : randomShuffle(sampled, rng).slice(0, Math.min(maxSamples, sampled.length));
+  if (strategy === "priority") {
+    picked.sort((a, b) => b.key - a.key);
+  } else {
+    randomShuffle(picked, rng);
+  }
 
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, `${picked.map((entry) => entry.line).join("\n")}${picked.length > 0 ? "\n" : ""}`, "utf-8");
+  await writeJsonlLines(outputPath, picked);
   const meta = {
     createdAt: nowIso(),
     bufferDir: context.bufferDir,
