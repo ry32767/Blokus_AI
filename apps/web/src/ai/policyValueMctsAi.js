@@ -3,6 +3,7 @@ import { chooseEndgameAlphaBetaMove, chooseExactEndgameMove } from "./alphaBetaA
 import { evaluateMoveQuick, evaluateState } from "./evaluation.js";
 import { chooseExpertMove } from "./expertAi.js";
 import { inferPolicyValue, now } from "./modelRunner.js";
+import { resolveRng, scoredDescending } from "./random.js";
 import { TranspositionTable, hashState, totalLegalPlacements, totalRemainingPieces } from "./transpositionTable.js";
 
 function normalizeValue(scoreDiff) {
@@ -14,13 +15,16 @@ function finalValueFor(state, player) {
   return normalizeValue(player === 0 ? scoreA - scoreB : scoreB - scoreA);
 }
 
-function rankByPolicy(logits, moves) {
-  const scored = moves.map((move) => ({
+function rankByPolicy(logits, moves, rng) {
+  const scored = scoredDescending(
+    moves,
+    (move) => Number(logits[encodeAction(move)] ?? Number.NEGATIVE_INFINITY),
+    rng,
+  ).map(({ item: move, score }) => ({
     move,
     action: encodeAction(move),
-    prior: Number(logits[encodeAction(move)] ?? Number.NEGATIVE_INFINITY),
+    prior: score,
   }));
-  scored.sort((a, b) => b.prior - a.prior);
   const top = scored.slice(0, Math.max(1, scored.length));
   const maxLogit = top[0]?.prior ?? 0;
   const weights = top.map((entry) => Math.exp(entry.prior - maxLogit));
@@ -44,7 +48,7 @@ function createNode(state, move = null, parent = null, prior = 0) {
   };
 }
 
-function buildPolicyTargets(root, fallbackMove) {
+function buildPolicyTargets(root, fallbackMove, rng) {
   const children = root.children.filter((child) => child.move);
   const totalVisits = children.reduce((sum, child) => sum + child.visits, 0);
   if (totalVisits <= 0) {
@@ -61,8 +65,9 @@ function buildPolicyTargets(root, fallbackMove) {
       action: encodeAction(child.move),
       visits: child.visits,
       prob: child.visits / totalVisits,
+      tie: rng(),
     }))
-    .sort((a, b) => b.visits - a.visits);
+    .sort((a, b) => (b.visits - a.visits) || (a.tie - b.tie));
 
   return {
     actions: normalized.map((entry) => entry.action),
@@ -104,6 +109,7 @@ function backpropagate(node, valueFromRootPerspective, rootPlayer) {
 }
 
 async function expandNode(node, rootPlayer, config, table, counters, deps) {
+  const rng = resolveRng(config);
   if (node.state.status !== "playing") {
     return finalValueFor(node.state, rootPlayer);
   }
@@ -116,7 +122,7 @@ async function expandNode(node, rootPlayer, config, table, counters, deps) {
     if (!inference.logits || inference.logits.length !== ACTION_SIZE) {
       throw new Error(`Unexpected policy logits shape: ${inference.logits?.length ?? "none"}`);
     }
-    const ranked = rankByPolicy(inference.logits, moves).slice(0, config.candidateLimit ?? 120);
+    const ranked = rankByPolicy(inference.logits, moves, rng).slice(0, config.candidateLimit ?? 120);
     node.unexpanded = ranked;
     const value = node.state.currentPlayer === rootPlayer ? inference.value : -inference.value;
     table.set({
@@ -142,7 +148,7 @@ async function expandNode(node, rootPlayer, config, table, counters, deps) {
 
     const inference = await inferPolicyValue(childState, childState.currentPlayer, config, deps);
     const childMoves = generateLegalMoves(childState);
-    child.unexpanded = rankByPolicy(inference.logits, childMoves).slice(0, config.candidateLimit ?? 120);
+    child.unexpanded = rankByPolicy(inference.logits, childMoves, rng).slice(0, config.candidateLimit ?? 120);
     const value = childState.currentPlayer === rootPlayer ? inference.value : -inference.value;
     table.set({
       hash: hashState(childState),
@@ -175,6 +181,7 @@ export async function choosePolicyValueMctsMove(state, config = {}, deps = {}) {
   const table = config.table ?? new TranspositionTable();
   const rootPlayer = state.currentPlayer;
   const counters = { simulations: 0, nodes: 1, tableHits: 0 };
+  const rng = resolveRng(config);
 
   if (legalMoves.length === 1 && legalMoves[0].kind === "pass") {
     return {
@@ -195,7 +202,7 @@ export async function choosePolicyValueMctsMove(state, config = {}, deps = {}) {
 
   const root = createNode(state);
   const rootPolicy = await inferPolicyValue(state, state.currentPlayer, config, deps);
-  root.unexpanded = rankByPolicy(rootPolicy.logits, legalMoves).slice(0, candidateLimit);
+  root.unexpanded = rankByPolicy(rootPolicy.logits, legalMoves, rng).slice(0, candidateLimit);
   let bestValue = state.currentPlayer === rootPlayer ? rootPolicy.value : -rootPolicy.value;
 
   while (now() - startedAt < timeLimitMs) {
@@ -228,12 +235,12 @@ export async function choosePolicyValueMctsMove(state, config = {}, deps = {}) {
 
   let bestChild = root.children[0];
   for (const child of root.children) {
-    if (!bestChild || child.visits > bestChild.visits) {
+    if (!bestChild || child.visits > bestChild.visits || (child.visits === bestChild.visits && rng() < 0.5)) {
       bestChild = child;
     }
   }
   const bestMove = bestChild?.move ?? root.unexpanded?.[0]?.move ?? legalMoves[0];
-  const policyTargets = buildPolicyTargets(root, bestMove);
+  const policyTargets = buildPolicyTargets(root, bestMove, rng);
 
   return {
     move: bestMove,

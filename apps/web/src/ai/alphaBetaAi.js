@@ -1,5 +1,6 @@
 import { applyMove, generateLegalMoves, sameMove, scoreState } from "../../../../packages/core/src/index.js";
 import { cheapMoveOrderScore, evaluateMoveQuick, evaluateState } from "./evaluation.js";
+import { resolveRng } from "./random.js";
 import { TranspositionTable, hashState } from "./transpositionTable.js";
 
 function now() {
@@ -10,19 +11,20 @@ function timeExpired(startedAt, timeLimitMs) {
   return now() - startedAt >= timeLimitMs;
 }
 
-function orderMoves(state, player, table) {
+function orderMoves(state, player, table, rng) {
   const moves = generateLegalMoves(state);
   const entry = table.get(hashState(state));
   return moves
     .map((move) => ({
       move,
       priority: entry?.bestMove && sameMove(entry.bestMove, move) ? Number.POSITIVE_INFINITY : cheapMoveOrderScore(move),
+      tie: rng(),
     }))
-    .sort((a, b) => b.priority - a.priority)
+    .sort((a, b) => (b.priority - a.priority) || (a.tie - b.tie))
     .map((item) => item.move);
 }
 
-function alphaBetaSearch(state, depth, alpha, beta, rootPlayer, startedAt, timeLimitMs, table, counters) {
+function alphaBetaSearch(state, depth, alpha, beta, rootPlayer, startedAt, timeLimitMs, table, counters, rng) {
   if (timeExpired(startedAt, timeLimitMs)) {
     throw new Error("TIME_LIMIT");
   }
@@ -41,7 +43,7 @@ function alphaBetaSearch(state, depth, alpha, beta, rootPlayer, startedAt, timeL
     return { value: evaluateState(state, rootPlayer), bestMove: null };
   }
 
-  const moves = orderMoves(state, state.currentPlayer, table);
+  const moves = orderMoves(state, state.currentPlayer, table, rng);
   let bestMove = moves[0] ?? null;
   const maximizing = state.currentPlayer === rootPlayer;
   let bestValue = maximizing ? -Infinity : Infinity;
@@ -51,17 +53,17 @@ function alphaBetaSearch(state, depth, alpha, beta, rootPlayer, startedAt, timeL
   for (const move of moves) {
     counters.nodes += 1;
     const nextState = applyMove(state, move);
-    const result = alphaBetaSearch(nextState, depth - 1, alpha, beta, rootPlayer, startedAt, timeLimitMs, table, counters);
+    const result = alphaBetaSearch(nextState, depth - 1, alpha, beta, rootPlayer, startedAt, timeLimitMs, table, counters, rng);
     const value = result.value;
 
     if (maximizing) {
-      if (value > bestValue) {
+      if (value > bestValue || (value === bestValue && rng() < 0.5)) {
         bestValue = value;
         bestMove = move;
       }
       alpha = Math.max(alpha, value);
     } else {
-      if (value < bestValue) {
+      if (value < bestValue || (value === bestValue && rng() < 0.5)) {
         bestValue = value;
         bestMove = move;
       }
@@ -93,6 +95,7 @@ export async function chooseEndgameAlphaBetaMove(state, config = {}) {
   const maxDepth = config.maxDepth ?? 5;
   const table = config.table ?? new TranspositionTable();
   const counters = { nodes: 0, tableHits: 0 };
+  const rng = resolveRng(config);
 
   if (legalMoves.length === 1 && legalMoves[0].kind === "pass") {
     return {
@@ -126,6 +129,7 @@ export async function chooseEndgameAlphaBetaMove(state, config = {}) {
         timeLimitMs,
         table,
         counters,
+        rng,
       );
       if (result.bestMove) {
         bestMove = result.bestMove;
@@ -162,7 +166,7 @@ function finalScoreValue(state, rootPlayer) {
   return rootPlayer === 0 ? scoreA - scoreB : scoreB - scoreA;
 }
 
-function exactSearch(state, alpha, beta, rootPlayer, startedAt, timeLimitMs, table, counters) {
+function exactSearch(state, alpha, beta, rootPlayer, startedAt, timeLimitMs, table, counters, rng) {
   if (timeExpired(startedAt, timeLimitMs)) {
     throw new Error("TIME_LIMIT");
   }
@@ -178,7 +182,7 @@ function exactSearch(state, alpha, beta, rootPlayer, startedAt, timeLimitMs, tab
     return { value: finalScoreValue(state, rootPlayer), bestMove: null };
   }
 
-  const moves = orderMoves(state, state.currentPlayer, table);
+  const moves = orderMoves(state, state.currentPlayer, table, rng);
   const maximizing = state.currentPlayer === rootPlayer;
   let bestMove = moves[0] ?? null;
   let bestValue = maximizing ? -Infinity : Infinity;
@@ -186,17 +190,17 @@ function exactSearch(state, alpha, beta, rootPlayer, startedAt, timeLimitMs, tab
   for (const move of moves) {
     counters.nodes += 1;
     const nextState = applyMove(state, move);
-    const result = exactSearch(nextState, alpha, beta, rootPlayer, startedAt, timeLimitMs, table, counters);
+    const result = exactSearch(nextState, alpha, beta, rootPlayer, startedAt, timeLimitMs, table, counters, rng);
     const value = result.value;
 
     if (maximizing) {
-      if (value > bestValue) {
+      if (value > bestValue || (value === bestValue && rng() < 0.5)) {
         bestValue = value;
         bestMove = move;
       }
       alpha = Math.max(alpha, value);
     } else {
-      if (value < bestValue) {
+      if (value < bestValue || (value === bestValue && rng() < 0.5)) {
         bestValue = value;
         bestMove = move;
       }
@@ -224,6 +228,7 @@ export async function chooseExactEndgameMove(state, config = {}) {
   const timeLimitMs = config.timeLimitMs ?? config.maxThinkingMs ?? 5000;
   const table = config.table ?? new TranspositionTable();
   const counters = { nodes: 0, tableHits: 0 };
+  const rng = resolveRng(config);
 
   if (legalMoves.length === 1 && legalMoves[0].kind === "pass") {
     return {
@@ -254,6 +259,7 @@ export async function chooseExactEndgameMove(state, config = {}) {
       timeLimitMs,
       table,
       counters,
+      rng,
     );
 
     return {

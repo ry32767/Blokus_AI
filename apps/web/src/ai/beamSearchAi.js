@@ -1,5 +1,6 @@
 import { applyMove, generateLegalMoves, scoreState } from "../../../../packages/core/src/index.js";
 import { cheapMoveOrderScore, evaluateState } from "./evaluation.js";
+import { resolveRng, scoredDescending } from "./random.js";
 
 function now() {
   return typeof performance === "undefined" ? Date.now() : performance.now();
@@ -9,10 +10,9 @@ function otherPlayer(player) {
   return player === 0 ? 1 : 0;
 }
 
-function rankMoves(state, player, beamWidth) {
-  return generateLegalMoves(state)
-    .map((move) => ({ move, score: cheapMoveOrderScore(move) }))
-    .sort((a, b) => b.score - a.score)
+function rankMoves(state, beamWidth, rng) {
+  return scoredDescending(generateLegalMoves(state), cheapMoveOrderScore, rng)
+    .map(({ item: move, score }) => ({ move, score }))
     .slice(0, beamWidth);
 }
 
@@ -39,7 +39,7 @@ function searchLayer(state, rootPlayer, depth, maxDepth, options, startedAt) {
   const currentPlayer = state.currentPlayer;
   const maximizing = currentPlayer === rootPlayer;
   const beamWidth = maximizing ? options.beamWidthSelf : options.beamWidthOpponent;
-  const rankedMoves = rankMoves(state, rootPlayer, beamWidth);
+  const rankedMoves = rankMoves(state, beamWidth, options.rng);
 
   if (rankedMoves.length === 0) {
     return evaluateLeaf(state, rootPlayer);
@@ -62,6 +62,7 @@ function searchLayer(state, rootPlayer, depth, maxDepth, options, startedAt) {
 export async function chooseBeamSearchMove(state, config = {}) {
   const startedAt = now();
   const legalMoves = generateLegalMoves(state);
+  const rng = resolveRng(config);
 
   if (legalMoves.length === 1 && legalMoves[0].kind === "pass") {
     return {
@@ -85,10 +86,11 @@ export async function chooseBeamSearchMove(state, config = {}) {
     beamWidthSelf: opening ? Math.min(config.beamWidthSelf ?? 32, 10) : Math.min(config.beamWidthSelf ?? 32, 18),
     beamWidthOpponent: opening ? Math.min(config.beamWidthOpponent ?? 32, 8) : Math.min(config.beamWidthOpponent ?? 32, 16),
     timeLimitMs: requestedTimeLimitMs,
+    rng,
   };
 
   const rootPlayer = state.currentPlayer;
-  const rankedMoves = rankMoves(state, rootPlayer, options.beamWidthSelf);
+  const rankedMoves = rankMoves(state, options.beamWidthSelf, rng);
   let bestMove = rankedMoves[0].move;
   let bestValue = -Infinity;
   let visitedNodes = 0;
@@ -98,7 +100,7 @@ export async function chooseBeamSearchMove(state, config = {}) {
     const nextState = applyMove(state, move);
     const value = searchLayer(nextState, rootPlayer, 1, options.depth, options, startedAt);
     visitedNodes += 1;
-    if (value > bestValue) {
+    if (value > bestValue || (value === bestValue && rng() < 0.5)) {
       bestValue = value;
       bestMove = move;
     }

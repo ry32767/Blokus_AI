@@ -1,5 +1,6 @@
 import { generateLegalMoves } from "../../../../packages/core/src/index.js";
 import { cheapMoveOrderScore, createHeuristicScorer } from "./evaluation.js";
+import { chooseBestByScore, resolveRng, scoredDescending } from "./random.js";
 
 function now() {
   return typeof performance === "undefined" ? Date.now() : performance.now();
@@ -31,6 +32,7 @@ export async function chooseHeuristicMove(state, config = {}) {
   const profile = config.profile ?? (difficulty === "easy" ? "weak" : "strong");
   const timeLimitMs = config.timeLimitMs ?? config.maxThinkingMs ?? (profile === "weak" ? 250 : 400);
   const legalMoves = generateLegalMoves(state);
+  const rng = resolveRng(config);
 
   if (legalMoves.length === 1 && legalMoves[0].kind === "pass") {
     return toPassDecision(legalMoves[0], startedAt, "heuristic", difficulty);
@@ -38,25 +40,23 @@ export async function chooseHeuristicMove(state, config = {}) {
 
   const player = state.currentPlayer;
   const scoreMove = createHeuristicScorer(profile);
-  const shortlist = legalMoves
-    .map((move) => ({ move, order: cheapMoveOrderScore(move) }))
-    .sort((a, b) => b.order - a.order)
+  const shortlist = scoredDescending(legalMoves, cheapMoveOrderScore, rng)
     .slice(0, shortlistLimitFor(state, profile, config))
-    .map((entry) => entry.move);
+    .map((entry) => entry.item);
 
-  let bestMove = shortlist[0];
-  let bestValue = scoreMove(state, player, bestMove);
-  let evaluatedMoves = 1;
-
-  for (const move of shortlist.slice(1)) {
+  const evaluated = [];
+  for (const move of shortlist) {
     if (now() - startedAt >= timeLimitMs) break;
-    const value = scoreMove(state, player, move);
-    evaluatedMoves += 1;
-    if (value > bestValue) {
-      bestValue = value;
-      bestMove = move;
-    }
+    evaluated.push({ move, value: scoreMove(state, player, move) });
   }
+  const fallbackEntry = { move: shortlist[0], value: scoreMove(state, player, shortlist[0]) };
+  const { item: bestEntry, score: bestValue } = chooseBestByScore(
+    evaluated.length > 0 ? evaluated : [fallbackEntry],
+    (entry) => entry.value,
+    rng,
+  );
+  const bestMove = bestEntry.move;
+  const evaluatedMoves = Math.max(1, evaluated.length);
 
   return {
     move: bestMove,
