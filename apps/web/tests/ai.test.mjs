@@ -149,6 +149,52 @@ suite.test("master returns a legal move with a policy-value session", async () =
   assert.equal(decision.stats.engine, "master");
 });
 
+suite.test("master mcts grows a multi-ply tree (no depth-0 collapse)", async () => {
+  const state = createReducedBranchState();
+  const logits = new Float32Array(ACTION_SIZE).fill(0);
+  const candidateLimit = 6;
+  const simulations = 80;
+
+  const decision = await chooseMasterMove(state, {
+    difficulty: "master",
+    timeLimitMs: 5000,
+    simulations,
+    candidateLimit,
+    explorationC: 1.5,
+  }, {
+    ortModule: {
+      Tensor: class Tensor {
+        constructor(type, data, dims) {
+          this.type = type;
+          this.data = data;
+          this.dims = dims;
+        }
+      },
+    },
+    sessionFactory: async () => ({
+      inputNames: ["input"],
+      outputNames: ["policy_logits", "value"],
+      run: async () => ({
+        policy_logits: { data: logits },
+        value: { data: new Float32Array([0.1]) },
+      }),
+    }),
+  });
+
+  assert.equal(decision.stats.engine, "master");
+  assert.equal(isLegalMove(state, decision.move), true);
+  // A working PUCT tree must descend past the root's direct children: with only
+  // `candidateLimit` root candidates and many simulations, it has to materialise
+  // grandchildren, so the node count exceeds 1 + candidateLimit. The old depth-0
+  // transposition gate capped this at ~1 + candidateLimit (a single ply).
+  assert.ok(
+    decision.stats.nodes > candidateLimit + 1,
+    `expected multi-ply tree growth, got nodes=${decision.stats.nodes}`,
+  );
+  assert.ok(decision.stats.simulations >= simulations - 1, `expected ~${simulations} sims, got ${decision.stats.simulations}`);
+  assert.ok(Number.isFinite(decision.stats.value) && Math.abs(decision.stats.value) <= 1);
+});
+
 suite.test("alpha-beta returns a legal move in searchable endgames", async () => {
   let state = createInitialState("fixedStart");
   for (let i = 0; i < 34; i += 1) {

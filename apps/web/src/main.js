@@ -8,6 +8,7 @@ import {
   explainPlacement,
   generateLegalMoves,
   getCellsForMove,
+  getFlippedOrientation,
   getOrientations,
   getWinner,
   isLegalMove,
@@ -271,6 +272,14 @@ function skipTurn() {
 function rotateSelected(step = 1) {
   const count = currentOrientations().length;
   selectedOrientationIndex = (selectedOrientationIndex + step + count) % count;
+  render();
+}
+
+function flipSelected() {
+  const orientations = currentOrientations();
+  const flipped = getFlippedOrientation(selectedOrientation());
+  const flippedIndex = orientations.findIndex((orientation) => orientation.globalId === flipped?.globalId);
+  if (flippedIndex >= 0) selectedOrientationIndex = flippedIndex;
   render();
 }
 
@@ -691,7 +700,7 @@ function bindEvents() {
   document.querySelector("#new-game")?.addEventListener("click", resetGame);
   document.querySelector("#undo")?.addEventListener("click", undo);
   document.querySelector("#rotate-top")?.addEventListener("click", () => rotateSelected(1));
-  document.querySelector("#flip-top")?.addEventListener("click", () => rotateSelected(-1));
+  document.querySelector("#flip-top")?.addEventListener("click", flipSelected);
   document.querySelector("#skip-turn")?.addEventListener("click", skipTurn);
   document.querySelector("#copy-json")?.addEventListener("click", copyGameJson);
   document.querySelector("#load-json")?.addEventListener("click", loadGameJson);
@@ -754,7 +763,7 @@ function bindEvents() {
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "r" || event.key === "R") rotateSelected(1);
-  if (event.key === "f" || event.key === "F") rotateSelected(-1);
+  if (event.key === "f" || event.key === "F") flipSelected();
   if (event.key === "Escape") {
     hoverCell = null;
     statusMessage = "Selection cleared.";

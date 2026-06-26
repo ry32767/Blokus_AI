@@ -1,4 +1,4 @@
-import { applyMove, generateLegalMoves } from "../../../../packages/core/src/index.js";
+import { applyMove, generateLegalMoves, scoreState } from "../../../../packages/core/src/index.js";
 import { cheapMoveOrderScore, evaluateMoveQuick, evaluateState } from "./evaluation.js";
 import { resolveRng, scoredDescending } from "./random.js";
 import { TranspositionTable, hashState } from "./transpositionTable.js";
@@ -7,36 +7,38 @@ function now() {
   return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
+function normalizeEval(score) {
+  return Math.max(-1, Math.min(1, score / 100));
+}
+
+// Terminal value from the perspective of the player to move at `state`.
+function finalValueForToMove(state) {
+  const [scoreA, scoreB] = scoreState(state);
+  return Math.max(-1, Math.min(1, (state.currentPlayer === 0 ? scoreA - scoreB : scoreB - scoreA) / 89));
+}
+
 function rankCandidateMoves(state, candidateLimit, rng) {
   return scoredDescending(generateLegalMoves(state), cheapMoveOrderScore, rng)
-    .map(({ item: move, score }) => ({ move, score }))
+    .map(({ item: move }) => move)
     .slice(0, candidateLimit);
 }
 
-function createNode(state, move = null, parent = null) {
-  return {
-    state,
-    move,
-    parent,
-    children: [],
-    unexpanded: null,
-    visits: 0,
-    valueSum: 0,
-  };
+// Negamax tree node with lazy child state. node.valueSum/node.visits is the average
+// value from the perspective of the player to move at that node.
+function createRoot(state) {
+  return { move: null, state, visits: 0, valueSum: 0, children: null, terminalValue: null };
 }
 
-function ensureUnexpanded(node, rootPlayer, candidateLimit, rng) {
-  if (node.unexpanded) return node.unexpanded;
-  node.unexpanded = rankCandidateMoves(node.state, candidateLimit, rng);
-  return node.unexpanded;
+function createChild(move) {
+  return { move, state: null, visits: 0, valueSum: 0, children: null, terminalValue: null };
 }
 
 function selectChild(node, explorationC) {
   let bestChild = node.children[0];
   let bestScore = -Infinity;
-
   for (const child of node.children) {
-    const exploitation = child.visits === 0 ? 0 : child.valueSum / child.visits;
+    // child Q is in the child's (opponent's) perspective; negate for this node.
+    const exploitation = child.visits === 0 ? 0 : -(child.valueSum / child.visits);
     const exploration = child.visits === 0
       ? Infinity
       : explorationC * Math.sqrt(Math.log(node.visits + 1) / child.visits);
@@ -46,28 +48,51 @@ function selectChild(node, explorationC) {
       bestChild = child;
     }
   }
-
   return bestChild;
 }
 
-function backpropagate(node, value) {
-  let current = node;
-  while (current) {
-    current.visits += 1;
-    current.valueSum += value;
-    current = current.parent;
+function backup(path, leafValue) {
+  let value = leafValue;
+  for (let i = path.length - 1; i >= 0; i -= 1) {
+    path[i].visits += 1;
+    path[i].valueSum += value;
+    value = -value;
   }
+}
+
+// Expand a leaf, returning its value in the leaf's to-move perspective.
+function expandLeaf(node, candidateLimit, rng, table, counters) {
+  if (node.state.status !== "playing") {
+    node.children = [];
+    node.terminalValue = finalValueForToMove(node.state);
+    return node.terminalValue;
+  }
+
+  const hash = hashState(node.state);
+  const cached = table.get(hash);
+  let value;
+  if (cached) {
+    counters.tableHits += 1;
+    value = cached.value;
+  } else {
+    value = normalizeEval(evaluateState(node.state, node.state.currentPlayer));
+    table.set({ hash, depth: 0, value, bound: "exact", bestMove: node.move ?? undefined });
+  }
+
+  node.children = rankCandidateMoves(node.state, candidateLimit, rng).map(createChild);
+  return value;
 }
 
 export async function chooseMctsMove(state, config = {}) {
   const startedAt = now();
   const legalMoves = generateLegalMoves(state);
-  const rootPlayer = state.currentPlayer;
   const candidateLimit = config.candidateLimit ?? config.maxChildren ?? 120;
   const explorationC = config.explorationC ?? 1.2;
   const timeLimitMs = config.timeLimitMs ?? config.maxThinkingMs ?? 1500;
+  const maxSimulations = config.simulations ?? config.maxSimulations ?? Infinity;
   const table = config.table ?? new TranspositionTable();
   const rng = resolveRng(config);
+  const counters = { simulations: 0, nodes: 1, tableHits: 0 };
 
   if (legalMoves.length === 1 && legalMoves[0].kind === "pass") {
     return {
@@ -85,59 +110,40 @@ export async function chooseMctsMove(state, config = {}) {
     };
   }
 
-  const root = createNode(state);
-  let simulations = 0;
-  let nodes = 1;
-  let tableHits = 0;
+  const root = createRoot(state);
+  expandLeaf(root, candidateLimit, rng, table, counters);
 
-  while (now() - startedAt < timeLimitMs) {
+  while (now() - startedAt < timeLimitMs && counters.simulations < maxSimulations) {
+    const path = [root];
     let node = root;
-
-    while (node.children.length > 0 && ensureUnexpanded(node, rootPlayer, candidateLimit, rng).length === 0) {
-      node = selectChild(node, explorationC);
-    }
-
-    const unexpanded = ensureUnexpanded(node, rootPlayer, candidateLimit, rng);
-    if (unexpanded.length > 0 && now() - startedAt < timeLimitMs) {
-      const { move } = unexpanded.shift();
-      const nextState = applyMove(node.state, move);
-      const child = createNode(nextState, move, node);
-      node.children.push(child);
+    while (node.children !== null && node.children.length > 0) {
+      const child = selectChild(node, explorationC);
+      if (child.state === null) {
+        child.state = applyMove(node.state, child.move);
+        counters.nodes += 1;
+      }
       node = child;
-      nodes += 1;
+      path.push(node);
     }
 
-    const stateHash = hashState(node.state);
-    const cached = table.get(stateHash);
-    let value;
-    if (cached) {
-      tableHits += 1;
-      value = cached.value;
-    } else {
-      value = evaluateState(node.state, rootPlayer);
-      table.set({
-        hash: stateHash,
-        depth: 0,
-        value,
-        bound: "exact",
-        bestMove: node.move ?? undefined,
-        visits: node.visits,
-      });
-    }
-
-    backpropagate(node, value);
-    simulations += 1;
+    const value = (node.children !== null && node.children.length === 0)
+      ? (node.terminalValue ?? finalValueForToMove(node.state))
+      : expandLeaf(node, candidateLimit, rng, table, counters);
+    backup(path, value);
+    counters.simulations += 1;
   }
 
-  let bestChild = root.children[0];
-  for (const child of root.children) {
+  let bestChild = root.children?.[0] ?? null;
+  for (const child of root.children ?? []) {
     if (!bestChild || child.visits > bestChild.visits || (child.visits === bestChild.visits && rng() < 0.5)) {
       bestChild = child;
     }
   }
 
   const bestMove = bestChild?.move ?? legalMoves[0];
-  const bestValue = bestChild?.visits ? bestChild.valueSum / bestChild.visits : evaluateMoveQuick(state, rootPlayer, bestMove);
+  const bestValue = bestChild?.visits
+    ? -(bestChild.valueSum / bestChild.visits)
+    : normalizeEval(evaluateMoveQuick(state, state.currentPlayer, bestMove));
 
   return {
     move: bestMove,
@@ -148,10 +154,10 @@ export async function chooseMctsMove(state, config = {}) {
       legalMoves: legalMoves.length,
       selectedAction: -1,
       selectedPieceId: bestMove.kind === "place" ? bestMove.pieceId : undefined,
-      simulations,
-      nodes,
-      tableHits,
-      value: Number(bestValue.toFixed(2)),
+      simulations: counters.simulations,
+      nodes: counters.nodes,
+      tableHits: counters.tableHits,
+      value: Number(bestValue.toFixed(3)),
     },
   };
 }

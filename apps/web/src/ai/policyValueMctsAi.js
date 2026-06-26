@@ -10,9 +10,10 @@ function normalizeValue(scoreDiff) {
   return Math.max(-1, Math.min(1, scoreDiff / 89));
 }
 
-function finalValueFor(state, player) {
+// Terminal value from the perspective of the player to move at `state`.
+function finalValueForToMove(state) {
   const [scoreA, scoreB] = scoreState(state);
-  return normalizeValue(player === 0 ? scoreA - scoreB : scoreB - scoreA);
+  return normalizeValue(state.currentPlayer === 0 ? scoreA - scoreB : scoreB - scoreA);
 }
 
 function rankByPolicy(logits, moves, rng) {
@@ -35,21 +36,62 @@ function rankByPolicy(logits, moves, rng) {
   }));
 }
 
-function createNode(state, move = null, parent = null, prior = 0) {
-  return {
-    state,
-    move,
-    parent,
-    prior,
-    visits: 0,
-    valueSum: 0,
-    children: [],
-    unexpanded: null,
-  };
+// --- Seeded sampling helpers (Dirichlet root noise + temperature move sampling) ---
+
+function sampleNormal(rng) {
+  let u1 = rng();
+  const u2 = rng();
+  if (u1 < 1e-12) u1 = 1e-12;
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+function sampleGamma(alpha, rng) {
+  if (alpha < 1) {
+    const u = Math.max(rng(), 1e-12);
+    return sampleGamma(alpha + 1, rng) * Math.pow(u, 1 / alpha);
+  }
+  const d = alpha - 1 / 3;
+  const c = 1 / Math.sqrt(9 * d);
+  // Marsaglia & Tsang; bounded retries keep it deterministic and terminating.
+  for (let i = 0; i < 64; i += 1) {
+    const x = sampleNormal(rng);
+    const v = Math.pow(1 + c * x, 3);
+    if (v <= 0) continue;
+    const u = Math.max(rng(), 1e-12);
+    if (Math.log(u) < 0.5 * x * x + d - d * v + d * Math.log(v)) {
+      return d * v;
+    }
+  }
+  return d;
+}
+
+function sampleDirichlet(count, alpha, rng) {
+  const draws = [];
+  let total = 0;
+  for (let i = 0; i < count; i += 1) {
+    const g = sampleGamma(alpha, rng);
+    draws.push(g);
+    total += g;
+  }
+  if (total <= 0) return draws.map(() => 1 / count);
+  return draws.map((value) => value / total);
+}
+
+// --- Tree nodes (lazy child state) ---
+// Convention (negamax): node.valueSum / node.visits is the average value from the
+// perspective of the player to move at that node. A leaf's network value is read
+// in the to-move perspective and negated once per ply on the way up.
+
+function createRoot(state) {
+  return { move: null, action: null, prior: 0, state, visits: 0, valueSum: 0, children: null, terminalValue: null };
+}
+
+function createChild(move, action, prior) {
+  return { move, action, prior, state: null, visits: 0, valueSum: 0, children: null, terminalValue: null };
 }
 
 function buildPolicyTargets(root, fallbackMove, rng) {
-  const children = root.children.filter((child) => child.move);
+  const children = (root.children || []).filter((child) => child.move);
   const totalVisits = children.reduce((sum, child) => sum + child.visits, 0);
   if (totalVisits <= 0) {
     return {
@@ -77,8 +119,9 @@ function buildPolicyTargets(root, fallbackMove, rng) {
   };
 }
 
-function uctScore(parent, child, explorationC) {
-  const q = child.visits === 0 ? 0 : child.valueSum / child.visits;
+function puctScore(parent, child, explorationC) {
+  // child.Q is in the child's (opponent's) perspective; negate for the parent.
+  const q = child.visits === 0 ? 0 : -(child.valueSum / child.visits);
   const u = explorationC * child.prior * Math.sqrt(parent.visits + 1) / (1 + child.visits);
   return q + u;
 }
@@ -87,7 +130,7 @@ function selectChild(node, explorationC) {
   let best = node.children[0];
   let bestScore = -Infinity;
   for (const child of node.children) {
-    const score = uctScore(node, child, explorationC);
+    const score = puctScore(node, child, explorationC);
     if (score > bestScore) {
       best = child;
       bestScore = score;
@@ -96,72 +139,82 @@ function selectChild(node, explorationC) {
   return best;
 }
 
-function backpropagate(node, valueFromRootPerspective, rootPlayer) {
-  let current = node;
-  while (current) {
-    const signed = current.state.currentPlayer === rootPlayer
-      ? valueFromRootPerspective
-      : -valueFromRootPerspective;
-    current.visits += 1;
-    current.valueSum += signed;
-    current = current.parent;
+function backup(path, leafValue) {
+  // leafValue is in the perspective of the player to move at the leaf.
+  let value = leafValue;
+  for (let i = path.length - 1; i >= 0; i -= 1) {
+    path[i].visits += 1;
+    path[i].valueSum += value;
+    value = -value;
   }
 }
 
-async function expandNode(node, rootPlayer, config, table, counters, deps) {
-  const rng = resolveRng(config);
+// Expand a leaf: returns the leaf value in the leaf's to-move perspective.
+async function expandLeaf(node, config, table, counters, deps, rng) {
   if (node.state.status !== "playing") {
-    return finalValueFor(node.state, rootPlayer);
+    node.children = [];
+    node.terminalValue = finalValueForToMove(node.state);
+    return node.terminalValue;
+  }
+
+  const candidateLimit = config.candidateLimit ?? 120;
+  const hash = hashState(node.state);
+  const cached = table.get(hash);
+  if (cached && cached.kind === "nn") {
+    counters.tableHits += 1;
+    node.children = cached.ranked.map((entry) => createChild(entry.move, entry.action, entry.prior));
+    return cached.value;
   }
 
   const moves = generateLegalMoves(node.state);
-  if (moves.length === 1 && moves[0].kind === "pass") {
-    node.unexpanded = [{ move: moves[0], prior: 1, action: PASS_ACTION }];
-  } else if (!node.unexpanded) {
-    const inference = await inferPolicyValue(node.state, node.state.currentPlayer, config, deps);
-    if (!inference.logits || inference.logits.length !== ACTION_SIZE) {
-      throw new Error(`Unexpected policy logits shape: ${inference.logits?.length ?? "none"}`);
+  const inference = await inferPolicyValue(node.state, node.state.currentPlayer, config, deps);
+  if (!inference.logits || inference.logits.length !== ACTION_SIZE) {
+    throw new Error(`Unexpected policy logits shape: ${inference.logits?.length ?? "none"}`);
+  }
+  const ranked = rankByPolicy(inference.logits, moves, rng).slice(0, candidateLimit);
+  const value = inference.value; // already in node.state.currentPlayer (to-move) perspective
+  table.set({ hash, kind: "nn", value, ranked });
+  node.children = ranked.map((entry) => createChild(entry.move, entry.action, entry.prior));
+  return value;
+}
+
+function applyRootNoise(root, config, rng) {
+  const weight = config.rootDirichletWeight ?? 0;
+  const alpha = config.rootDirichletAlpha ?? 0.3;
+  if (!(weight > 0) || !root.children || root.children.length <= 1) return;
+  const noise = sampleDirichlet(root.children.length, alpha, rng);
+  root.children.forEach((child, index) => {
+    child.prior = (1 - weight) * child.prior + weight * noise[index];
+  });
+}
+
+function chooseFinalChild(root, config, rng) {
+  const children = (root.children || []).filter((child) => child.visits > 0 || child.move);
+  if (children.length === 0) return null;
+  const temperature = config.moveSamplingTemperature ?? 0;
+  const samplingPlies = config.moveSamplingPlies ?? 0;
+  const useSampling = temperature > 0 && (root.state?.turn ?? Infinity) < samplingPlies;
+
+  if (useSampling) {
+    const weights = children.map((child) => Math.pow(Math.max(child.visits, 0), 1 / temperature));
+    const total = weights.reduce((sum, value) => sum + value, 0);
+    if (total > 0) {
+      let threshold = rng() * total;
+      for (let i = 0; i < children.length; i += 1) {
+        threshold -= weights[i];
+        if (threshold <= 0) return children[i];
+      }
+      return children[children.length - 1];
     }
-    const ranked = rankByPolicy(inference.logits, moves, rng).slice(0, config.candidateLimit ?? 120);
-    node.unexpanded = ranked;
-    const value = node.state.currentPlayer === rootPlayer ? inference.value : -inference.value;
-    table.set({
-      hash: hashState(node.state),
-      depth: 0,
-      value,
-      bound: "exact",
-      bestMove: ranked[0]?.move,
-    });
-    return value;
   }
 
-  if (node.unexpanded.length > 0) {
-    const next = node.unexpanded.shift();
-    const childState = applyMove(node.state, next.move);
-    const child = createNode(childState, next.move, node, next.prior);
-    node.children.push(child);
-    counters.nodes += 1;
-
-    if (childState.status !== "playing") {
-      return finalValueFor(childState, rootPlayer);
+  let best = children[0];
+  for (const child of children) {
+    if (child.visits > best.visits || (child.visits === best.visits && rng() < 0.5)) {
+      best = child;
     }
-
-    const inference = await inferPolicyValue(childState, childState.currentPlayer, config, deps);
-    const childMoves = generateLegalMoves(childState);
-    child.unexpanded = rankByPolicy(inference.logits, childMoves, rng).slice(0, config.candidateLimit ?? 120);
-    const value = childState.currentPlayer === rootPlayer ? inference.value : -inference.value;
-    table.set({
-      hash: hashState(childState),
-      depth: 0,
-      value,
-      bound: "exact",
-      bestMove: child.unexpanded[0]?.move,
-    });
-    return value;
   }
-
-  const fallback = evaluateState(node.state, rootPlayer) / 100;
-  return Math.max(-1, Math.min(1, fallback));
+  return best;
 }
 
 export function isMasterEndgameSearchable(state) {
@@ -176,10 +229,9 @@ export async function choosePolicyValueMctsMove(state, config = {}, deps = {}) {
   const startedAt = now();
   const legalMoves = generateLegalMoves(state);
   const timeLimitMs = config.timeLimitMs ?? config.maxThinkingMs ?? 2500;
-  const candidateLimit = config.candidateLimit ?? 120;
+  const maxSimulations = config.simulations ?? config.maxSimulations ?? Infinity;
   const explorationC = config.explorationC ?? 1.5;
   const table = config.table ?? new TranspositionTable();
-  const rootPlayer = state.currentPlayer;
   const counters = { simulations: 0, nodes: 1, tableHits: 0 };
   const rng = resolveRng(config);
 
@@ -200,47 +252,49 @@ export async function choosePolicyValueMctsMove(state, config = {}, deps = {}) {
     };
   }
 
-  const root = createNode(state);
-  const rootPolicy = await inferPolicyValue(state, state.currentPlayer, config, deps);
-  root.unexpanded = rankByPolicy(rootPolicy.logits, legalMoves, rng).slice(0, candidateLimit);
-  let bestValue = state.currentPlayer === rootPlayer ? rootPolicy.value : -rootPolicy.value;
+  const root = createRoot(state);
+  // Expand the root once (NN inference may throw here; let it propagate to the
+  // master wrapper so a broken model surfaces as an explicit fallback).
+  const rootValue = await expandLeaf(root, config, table, counters, deps, rng);
+  applyRootNoise(root, config, rng);
 
-  while (now() - startedAt < timeLimitMs) {
+  while (now() - startedAt < timeLimitMs && counters.simulations < maxSimulations) {
+    const path = [root];
     let node = root;
-    while (node.children.length > 0 && node.unexpanded && node.unexpanded.length === 0) {
-      node = selectChild(node, explorationC);
-    }
-    try {
-      const stateHash = hashState(node.state);
-      const cached = table.get(stateHash);
-      let value;
-      if (cached && cached.depth >= 0) {
-        counters.tableHits += 1;
-        value = cached.value;
-      } else {
-        value = await expandNode(node, rootPlayer, { ...config, candidateLimit }, table, counters, deps);
+    while (node.children !== null && node.children.length > 0) {
+      const child = selectChild(node, explorationC);
+      if (child.state === null) {
+        child.state = applyMove(node.state, child.move);
+        counters.nodes += 1;
       }
-      bestValue = value;
-      backpropagate(node, value, rootPlayer);
-      counters.simulations += 1;
-    } catch (error) {
-      const fallback = Math.max(-1, Math.min(1, evaluateMoveQuick(state, rootPlayer, legalMoves[0]) / 100));
-      backpropagate(node, fallback, rootPlayer);
-      counters.simulations += 1;
-      if ((error?.message || "").includes("Unexpected")) {
-        throw error;
+      node = child;
+      path.push(node);
+    }
+
+    let value;
+    if (node.children !== null && node.children.length === 0) {
+      // Re-selected terminal leaf.
+      value = node.terminalValue ?? finalValueForToMove(node.state);
+    } else {
+      try {
+        value = await expandLeaf(node, config, table, counters, deps, rng);
+      } catch (error) {
+        if ((error?.message || "").includes("Unexpected")) throw error;
+        // Non-shape inference hiccup on a deep leaf: fall back to a heuristic estimate
+        // in the leaf's own perspective rather than aborting the whole search.
+        value = Math.max(-1, Math.min(1, evaluateState(node.state, node.state.currentPlayer) / 100));
+        node.children = [];
+        node.terminalValue = value;
       }
     }
+    backup(path, value);
+    counters.simulations += 1;
   }
 
-  let bestChild = root.children[0];
-  for (const child of root.children) {
-    if (!bestChild || child.visits > bestChild.visits || (child.visits === bestChild.visits && rng() < 0.5)) {
-      bestChild = child;
-    }
-  }
-  const bestMove = bestChild?.move ?? root.unexpanded?.[0]?.move ?? legalMoves[0];
+  const bestChild = chooseFinalChild(root, config, rng);
+  const bestMove = bestChild?.move ?? legalMoves[0];
   const policyTargets = buildPolicyTargets(root, bestMove, rng);
+  const rootQ = root.visits > 0 ? root.valueSum / root.visits : rootValue;
 
   return {
     move: bestMove,
@@ -255,8 +309,8 @@ export async function choosePolicyValueMctsMove(state, config = {}, deps = {}) {
       simulations: counters.simulations,
       nodes: counters.nodes,
       tableHits: counters.tableHits,
-      value: Number(bestValue.toFixed(3)),
-      rootValue: Number(rootPolicy.value.toFixed(3)),
+      value: Number(rootQ.toFixed(3)),
+      rootValue: Number(rootValue.toFixed(3)),
       policyTargetActions: policyTargets.actions,
       policyTargetProbs: policyTargets.probs,
       policyTargetVisits: policyTargets.visits,
