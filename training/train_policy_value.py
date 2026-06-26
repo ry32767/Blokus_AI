@@ -6,7 +6,7 @@ import math
 import random
 import sys
 from pathlib import Path
-from typing import Iterable, List
+from typing import List
 
 ROOT = Path(__file__).resolve().parent
 VENDOR = ROOT / "vendor_py"
@@ -20,55 +20,8 @@ from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader, Dataset, random_split
 
 from blokus_shared import ACTION_SIZE, STATE_PLANES
-from policy_model import PolicyValueNet
-
-
-def _read_jsonl(path: Path) -> List[dict]:
-    samples = []
-    with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            if line.strip():
-                samples.append(json.loads(line))
-    return samples
-
-
-def _parse_simple_yaml_dataset_config(text: str) -> List[dict]:
-    datasets = []
-    current = None
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or line == "datasets:":
-            continue
-        if line.startswith("- "):
-            if current:
-                datasets.append(current)
-            current = {}
-            line = line[2:].strip()
-        if ":" in line and current is not None:
-            key, value = line.split(":", 1)
-            current[key.strip()] = value.strip().strip("'\"")
-    if current:
-        datasets.append(current)
-    return datasets
-
-
-def _load_dataset_config(path: Path) -> List[dict]:
-    text = path.read_text(encoding="utf-8")
-    if path.suffix.lower() == ".json":
-        config = json.loads(text)
-        return config.get("datasets", [])
-    return _parse_simple_yaml_dataset_config(text)
-
-
-def _iter_configured_dataset_specs(path: Path) -> Iterable[tuple[Path, float]]:
-    if path.suffix.lower() not in {".json", ".yaml", ".yml"}:
-        yield path, 1.0
-        return
-    for entry in _load_dataset_config(path):
-        dataset_path = Path(entry["path"])
-        if not dataset_path.is_absolute():
-            dataset_path = path.parent / dataset_path
-        yield dataset_path, float(entry.get("weight", 1.0))
+from indexed_jsonl_dataset import IndexedJsonlDataset
+from policy_model import PolicyValueNet, resolve_arch
 
 
 def _resolve_state(sample: dict):
@@ -96,28 +49,54 @@ def _resolve_policy_target(sample: dict):
     return target, actions, probs
 
 
-def _resolve_value_target(sample: dict):
+# Per-player Blokus Duo score is in [-89, +20] (with the +15 all-placed and +5
+# I1-last bonuses), so the score difference spans roughly [-109, +109].
+SCORE_DIFF_RANGE = 109.0
+
+
+def _resolve_value_target(sample: dict, mode: str = "outcome"):
+    # Explicit per-action targets win out (critical-state replay etc.).
     if "value_target" in sample:
         return max(-1.0, min(1.0, float(sample["value_target"])))
     if isinstance(sample.get("q_values"), list) and sample["q_values"]:
         return max(-1.0, min(1.0, float(max(sample["q_values"]))))
     score_diff = float(sample.get("final_score_diff", 0.0))
-    return max(-1.0, min(1.0, score_diff / 89.0))
+    if mode == "margin":
+        return max(-1.0, min(1.0, score_diff / SCORE_DIFF_RANGE))
+    # Default: win/loss/draw outcome. Blokus Duo is a win/loss game, so the value
+    # head should learn win probability, not point spread.
+    if score_diff > 0:
+        return 1.0
+    if score_diff < 0:
+        return -1.0
+    return 0.0
 
 
 class PolicyValueDataset(Dataset):
-    def __init__(self, path: Path):
-        self.samples = []
-        for dataset_path, weight in _iter_configured_dataset_specs(path):
-            for sample in _read_jsonl(dataset_path):
-                sample["_sample_weight"] = max(0.0, weight)
-                self.samples.append(sample)
+    def __init__(
+        self,
+        path: Path,
+        *,
+        max_samples: int = 0,
+        seed: int = 7,
+        cache_dir: Path | None = None,
+        rebuild_index: bool = False,
+        value_target_mode: str = "outcome",
+    ):
+        self.value_target_mode = value_target_mode
+        self.records = IndexedJsonlDataset(
+            path,
+            max_samples=max_samples,
+            seed=seed,
+            cache_dir=cache_dir,
+            rebuild_index=rebuild_index,
+        )
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.records)
 
     def __getitem__(self, index):
-        sample = self.samples[index]
+        sample, sample_weight = self.records[index]
         state = _resolve_state(sample)
         mask = np.zeros((ACTION_SIZE,), dtype=np.float32)
         mask[sample["legal_actions"]] = 1.0
@@ -131,14 +110,14 @@ class PolicyValueDataset(Dataset):
                 policy /= total
         else:
             policy[target] = 1.0
-        value_target = _resolve_value_target(sample)
+        value_target = _resolve_value_target(sample, self.value_target_mode)
         return (
             torch.from_numpy(state),
             torch.from_numpy(mask),
             torch.from_numpy(policy),
             torch.tensor(target, dtype=torch.long),
             torch.tensor(value_target, dtype=torch.float32),
-            torch.tensor(float(sample.get("_sample_weight", 1.0)), dtype=torch.float32),
+            torch.tensor(float(sample_weight), dtype=torch.float32),
         )
 
 
@@ -222,7 +201,14 @@ def train(args):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
-    dataset = PolicyValueDataset(Path(args.dataset))
+    dataset = PolicyValueDataset(
+        Path(args.dataset),
+        max_samples=args.max_samples,
+        seed=args.seed,
+        cache_dir=Path(args.dataset_cache_dir) if args.dataset_cache_dir else None,
+        rebuild_index=args.rebuild_index_cache,
+        value_target_mode=args.value_target_mode,
+    )
     if len(dataset) == 0:
         raise SystemExit("Dataset is empty.")
 
@@ -238,13 +224,30 @@ def train(args):
 
     device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")
     amp_enabled = device.type == "cuda"
-    model = PolicyValueNet().to(device)
+    channels, residual_blocks = resolve_arch(args.net_size, args.channels, args.residual_blocks)
+    model_arch = {"channels": channels, "residual_blocks": residual_blocks, "net_size": args.net_size}
+    model = PolicyValueNet(channels=channels, residual_blocks=residual_blocks).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scaler = GradScaler(enabled=amp_enabled)
 
+    pin_memory = bool(args.pin_memory and device.type == "cuda")
+    loader_kwargs = {
+        "collate_fn": collate_batch,
+        "num_workers": args.num_workers,
+        "pin_memory": pin_memory,
+        "persistent_workers": args.num_workers > 0,
+    }
+    if args.num_workers > 0:
+        loader_kwargs["prefetch_factor"] = args.prefetch_factor
+
     batch_size = min(args.batch_size, len(train_set))
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, collate_fn=collate_batch)
-    val_loader = DataLoader(val_set, batch_size=min(args.batch_size, max(1, len(val_set))), shuffle=False, collate_fn=collate_batch)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, **loader_kwargs)
+    val_loader = DataLoader(
+        val_set,
+        batch_size=min(args.batch_size, max(1, len(val_set))),
+        shuffle=False,
+        **loader_kwargs,
+    )
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -292,6 +295,7 @@ def train(args):
         checkpoint = {
             "epoch": epoch + 1,
             "model_kind": "policy_value",
+            "model_arch": model_arch,
             "model_state": model.state_dict(),
             "optimizer_state": optimizer.state_dict(),
             "history": history,
@@ -305,8 +309,14 @@ def train(args):
         "device": device.type,
         "epochs": args.epochs,
         "samples": len(dataset),
+        "max_samples": args.max_samples,
+        "model_arch": model_arch,
+        "value_target_mode": args.value_target_mode,
         "train_samples": len(train_set),
         "val_samples": len(val_set),
+        "dataset_cache_dir": args.dataset_cache_dir,
+        "num_workers": args.num_workers,
+        "pin_memory": pin_memory,
         "best_checkpoint": str(best_path),
         "latest_checkpoint": str(checkpoint_path),
         "history": history,
@@ -326,7 +336,18 @@ def build_parser():
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--validation-split", type=float, default=0.1)
     parser.add_argument("--value-weight", type=float, default=0.5)
+    parser.add_argument("--net-size", choices=["small", "medium", "large"], default=None,
+                        help="trunk preset: small=64x4, medium=128x10, large=256x20 (override with --channels/--residual-blocks)")
+    parser.add_argument("--channels", type=int, default=None)
+    parser.add_argument("--residual-blocks", type=int, default=None)
+    parser.add_argument("--value-target-mode", choices=["outcome", "margin"], default="outcome")
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--max-samples", type=int, default=0)
+    parser.add_argument("--dataset-cache-dir", default=None)
+    parser.add_argument("--rebuild-index-cache", action="store_true")
+    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--prefetch-factor", type=int, default=2)
+    parser.add_argument("--pin-memory", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--cpu", action="store_true")
     return parser
 

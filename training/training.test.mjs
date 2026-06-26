@@ -9,7 +9,7 @@ import { getDefaultLearnedModelPath } from "./ai_runtime.mjs";
 import { addShardToReplayBuffer, replayBufferStats, sampleReplayBufferToDataset } from "./replay_buffer.mjs";
 import { ensureModelRegistry, getActiveModel, promoteModel, registerModel } from "./model_registry.mjs";
 import { claimNextJob, completeJob, enqueueSelfPlayJobs, queueStatus } from "./distributed_queue.mjs";
-import { eloGateDecision, updateEloRatings } from "./elo.mjs";
+import { eloGateDecision, sprtDecision, updateEloRatings } from "./elo.mjs";
 import { generateTrajectories } from "./critical_state_replay/collect_trajectory.mjs";
 import { selectCriticalStates } from "./critical_state_replay/select_critical_states.mjs";
 import { buildBranchDataset } from "./critical_state_replay/build_branch_dataset.mjs";
@@ -244,6 +244,24 @@ suite.test("elo gating produces bounded promotion decisions", () => {
   assert.equal(typeof decision.promote, "boolean");
   const updated = updateEloRatings(1200, 1200, 0.75, 24);
   assert.ok(updated.ratingA > 1200);
+});
+
+suite.test("sprt accepts a strong candidate, rejects a weak one, continues when undecided", () => {
+  // Strong: dominant score over many games -> accept H1 (promote).
+  const strong = sprtDecision({ wins: 120, draws: 10, losses: 40, elo0: 0, elo1: 10 });
+  assert.equal(strong.decision, "accept_h1");
+  assert.equal(strong.promote, true);
+  assert.ok(strong.llr >= strong.upper);
+
+  // Weak: clearly losing -> accept H0 (no promote).
+  const weak = sprtDecision({ wins: 40, draws: 10, losses: 120, elo0: 0, elo1: 10 });
+  assert.equal(weak.decision, "accept_h0");
+  assert.equal(weak.promote, false);
+
+  // Tiny near-even sample -> not enough evidence -> continue (no promote).
+  const undecided = sprtDecision({ wins: 3, draws: 0, losses: 3, elo0: 0, elo1: 10 });
+  assert.equal(undecided.decision, "continue");
+  assert.equal(undecided.promote, false);
 });
 
 suite.test("critical state replay generates branch policy-value records", async () => {

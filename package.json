@@ -18,6 +18,10 @@
     "smoke:critical": "node scripts/run-training-preset.mjs smoke:critical",
     "generate:orientations": "node scripts/generate-orientations.mjs",
     "sync:ort": "node scripts/sync-onnxruntime-assets.mjs",
+    "view:selfplay": "node training/view_selfplay.mjs",
+    "parity:golden": "node training/native/parity/gen_golden.mjs",
+    "native:test": "cargo test --manifest-path training/native/blokus-selfplay/Cargo.toml",
+    "native:selfplay": "cargo run --release --manifest-path training/native/blokus-selfplay/Cargo.toml --bin selfplay --",
     "generate:dataset": "node training/generate_dataset.mjs",
     "generate:trajectory": "node training/critical_state_replay/collect_trajectory.mjs",
     "generate:critical-replay": "node training/critical_state_replay/build_branch_dataset.mjs",
@@ -28,6 +32,7 @@
     "agent:selfplay": "node training/run_selfplay_agent.mjs",
     "selfplay:loop": "node training/run_selfplay_loop.mjs",
     "alphazero:loop": "node training/run_alphazero_loop.mjs",
+    "train:full": "node training/run_full_training.mjs",
     "registry:model": "node training/model_registry_cli.mjs",
     "train:policy": "node scripts/run-python.mjs training/train_policy.py",
     "train:policy-value": "node scripts/run-python.mjs training/train_policy_value.py",
@@ -36,5 +41,8 @@
   },
   "dependencies": {
     "onnxruntime-web": "^1.26.0"
+  },
+  "optionalDependencies": {
+    "onnxruntime-node": "^1.27.0"
   }
 }

@@ -1,526 +1,111 @@
 # AGENTS.md
 
-このファイルは、AI エージェント（Codex 等）がこのリポジトリで作業するときの前提、制約、確認手順、完了条件を定義します。
+AI エージェント（Claude Code / Codex 等）がこのリポジトリで作業するときの前提・制約・確認手順・完了条件を定義します。作業前に必ず読んでください。
 
-Codex は作業前にこのファイルを参照し、ここに書かれた方針に従ってください。
-
----
-
-## Project Overview
-
-このプロジェクトは、GitHub Pages で公開する静的 Web アプリ / Web サイトです。
-
-TODO: プロジェクトに合わせて記入してください。
-
-- Project name:
-- Purpose:
-- Target users:
-- Main value:
-- Public URL:
-- Repository type: `user/organization pages` または `project pages`
-- Production hosting: GitHub Pages
+> このファイルは **BlokusAI Duo 専用**です。ワークスペース直下の汎用テンプレート（React/Vite/Next を前提にしたもの）や、別プロジェクト（GeoSection）向けの `CLAUDE.md` の記述は、**このリポジトリには適用しません**。リポジトリ直下の本ファイルと [CLAUDE.md](CLAUDE.md) を優先してください。
 
 ---
 
-## First Steps
+## 1. Project Overview
 
-作業を始める前に、まず以下を確認してください。
-
-1. `README.md`
-2. `package.json`
-3. 使用しているフレームワークの設定ファイル
-   - `vite.config.*`
-   - `astro.config.*`
-   - `next.config.*`
-   - `その他該当する設定ファイル`
-4. GitHub Actions の workflow
-   - `.github/workflows/*`
-5. 既存のディレクトリ構成
-6. 既存のテスト、lint、typecheck、build コマンド
-
-実装に入る前に、必要に応じて以下を短く整理してください。
-
-- 現在の技術スタック
-- 実行可能な開発コマンド
-- ビルド成果物の出力先
-- GitHub Pages の公開方式
-- 実装方針
-- 不明点
+- **Project**: BlokusAI Duo — ブラウザで動く 2 人対戦 Blokus Duo と、それを強くするための学習基盤。
+- **目的（最重要）**: **公式ルールの Blokus Duo で世界ランカー（人間トップ）に勝てる AI** を作ること。強さに直結しない変更より、ルール正当性・探索の正しさ・自己対戦学習の質を優先する。
+- **構成**: バニラ JavaScript（ESM）のモノレポ ＋ Python(PyTorch) の自己対戦・学習パイプライン。
+- **バンドラ/フレームワークは無し**。React / Vite / Next / Tailwind 等は使っていない。`./packages/...` `./apps/...` の相対パスで静的に読み込む。
+- **ブラウザ推論**: `onnxruntime-web`（`apps/web/public/vendor/onnxruntime-web/`）。
+- **ホスティング**: GitHub Pages（`dist/` を publish）。
 
 ---
 
-## Core Rules
+## 2. ゲームルール（実装の正）
 
-作業時は以下を守ってください。
+- 盤面 14×14、0-indexed。21 ピース／プレイヤー、生成済み 91 orientation。
+- **開始マス（公式 Blokus Duo）**: A=`(4,4)` / B=`(9,9)`（盤内側のドット。**角ではない**）。定義は [packages/core/src/constants.js](packages/core/src/constants.js) と [training/blokus_shared.py](training/blokus_shared.py)（JS/Python で一致必須）。
+- 初手は自分の開始マスを覆う。2 手目以降は自色と「角接触のみ可・辺接触は不可」。相手とは接触可。
+- 合法手が無いときのみ pass。両者連続 pass か両者打てなくなれば終局。
+- **スコア式**（[packages/core/src/scoring.js](packages/core/src/scoring.js)、高いほど良い）:
+  `score = -(残りユニットマス数) + (全ピース配置で +15) + (最後に置いたのが I1 なら +5)`。
+  → 1 プレイヤーのスコア域は概ね `[-89, +20]`、スコア差は約 `[-109, +109]`。
 
-- 既存の設計、命名、ディレクトリ構成を尊重する
-- 依頼された範囲に集中し、関係ない変更を避ける
-- 大規模なリファクタリングは、明示的に求められた場合のみ行う
-- 変更はできるだけ小さく、レビューしやすい単位にする
-- 実在しないコマンドを推測で実行しない
-- `package.json` や README を確認し、存在するコマンドだけを使う
-- 依存関係を追加する場合は、目的と必要性を明確にする
-- 既存の UI / UX 方針がある場合はそれを優先する
-- 不明点が作業結果に大きく影響する場合は、実装前に質問する
-- 軽微な判断は自律的に行ってよい
-- 最後に、変更内容、検証結果、残課題を報告する
+> ⚠️ 開始マスを過去の `(0,0)/(13,13)`（角・非公式変種）から公式 `(4,4)/(9,9)` に変更済み。**この変更以前に学習した ONNX モデル/データセットは無効**で、再生成・再学習・再エクスポートが必要。
 
 ---
 
-## Human Intent
+## 3. Repository Structure
 
-人間が主に指定するべき内容は以下です。
+- `packages/core/` — ゲームモデルと共有エンコーダ（`rules.js`, `constants.js`, `scoring.js`, `board.js`, `action.js`, `orientation.js`, `stateEncoding.js`, `generatedOrientations.js`, `index.js`）＋ `tests/`。**安定した土台。むやみに動かさない。**
+- `apps/web/` — ブラウザアプリ。`src/main.js`（UI）、`src/ai/`（探索/学習 AI エンジン群）、`src/workers/`（Web Worker プロトコル）、`public/`（`models/`・`vendor/onnxruntime-web/`）、`tests/`。
+- `training/` — Node 製の自己対戦・アリーナ・リプレイバッファ・モデルレジストリ・AlphaZero ループ（`*.mjs`）＋ Python トレーナ（`*.py`）＋ `critical_state_replay/`。
+- `scripts/` — 自作の build/test/verify/serve/run-python など。
+- `docs/` — 設計・運用ドキュメント（[spec](docs/spec.md), [ARCHITECTURE](docs/ARCHITECTURE.md), [EVALUATION](docs/EVALUATION.md), [TRAINING_RUNBOOK](docs/TRAINING_RUNBOOK.md), [TRAINING_OPTIONS](docs/TRAINING_OPTIONS.md), [IMPLEMENTATION_PLAN](docs/IMPLEMENTATION_PLAN.md), [DEPLOYMENT_NOTE](docs/DEPLOYMENT_NOTE.md)）。
 
-- 誰に向けた機能・ページなのか
-- 何を実現したいのか
-- どの状態になれば完了なのか
-- 優先順位
-- デザインや挙動の好み
-- 制約条件
-- 変更してよい範囲
-
-目的や完了条件が曖昧で、実装方針に大きな差が出る場合は、推測で進めず質問してください。
+AI 難易度: `easy` / `normal`（ヒューリスティック）、`hard`（ビームサーチ）、`expert` / `expert_plus`（ヒューリスティック＋αβ＋ negamax 木探索＋終盤厳密解）、`learned`（PolicyNet 単体）、`master`（policy-value 誘導 PUCT MCTS ＋終盤探索）。
 
 ---
 
-## Tech Stack
+## 4. Commands
 
-TODO: 実際のプロジェクトに合わせて更新してください。
-
-- Language: TypeScript / JavaScript / HTML / CSS
-- Runtime: Node.js
-- Package manager: npm / pnpm / yarn
-- Frontend framework: React / Vue / Svelte / Astro / Next.js / plain HTML
-- Build tool: Vite / Astro / Next.js / other
-- Styling: CSS / CSS Modules / Tailwind CSS / Sass / other
-- Testing: Vitest / Jest / Playwright / none
-- Hosting: GitHub Pages
-- CI/CD: GitHub Actions
-
----
-
-## Repository Structure
-
-TODO: 実際の構成に合わせて更新してください。
-
-- `src/`: アプリケーション本体
-- `public/`: 静的アセット
-- `components/`: UI コンポーネント
-- `pages/` または `routes/`: ページ / ルーティング
-- `styles/`: スタイル
-- `tests/`: テスト
-- `docs/`: ドキュメント
-- `.github/workflows/`: GitHub Actions workflow
-
-存在しないディレクトリについては、この記述を修正してください。
-
----
-
-## Commands
-
-このプロジェクトで使う主なコマンドです。
-
-実行前に `package.json` を確認し、存在する script のみ実行してください。
+`package.json` の script のみを使う（PowerShell で `npm.ps1` が止まる場合は `npm.cmd`）。
 
 ```bash
-# install dependencies
-npm install
+npm test            # node scripts/test.mjs — core / web / training の全スイート
+npm run verify      # test → build → dist/ の smoke check
+npm run build       # dist/ を生成（静的コピー）
+npm run lint        # 現状 no-op
+npm run typecheck   # 現状 no-op
+npm run dev         # node scripts/serve.mjs（既定 http://localhost:4173）
+```
 
-# start development server
-npm run dev
+学習・自己対戦は `npm run generate:dataset` / `selfplay:loop` / `alphazero:loop` / `cycle:learned` 等（正確なパスは `package.json`、手順は [docs/TRAINING_RUNBOOK.md](docs/TRAINING_RUNBOOK.md)、全オプションは [docs/TRAINING_OPTIONS.md](docs/TRAINING_OPTIONS.md)）。
 
-# build for production
-npm run build
+Python は `scripts/run-python.mjs` 経由（`npm run train:policy` / `train:policy-value` / `export:onnx`）。Python 実体は環境変数 `BLOKUS_PYTHON` で指定、**cwd=リポジトリルート**で実行され、`training/*.py` は**兄弟モジュール import**（`from blokus_shared import ...`）。
 
-# run tests
+---
+
+## 5. エージェント向けの重要な制約
+
+- **`training/` のソース（`*.mjs` / `*.py`）を安易に移動しない。** 多くが深さ依存の相対 import（`../packages`, `../apps`, `critical_state_replay/` は `../../`）を使い、`package.json` の約 7 個の script と `scripts/test.mjs` の 6 個の import がパスを直書きしている。移動する場合は import 深度・全 script パス・`scripts/test.mjs` を同時に直し、必ず `npm run verify` を通す。クラスタ単位で移動し、半端な状態で止めない。
+- **JS↔Python パリティ**: action 符号化・状態エンコーダ・開始マスは両言語で完全一致が前提。片方を変えたら必ずもう片方も変え、`npm test` の parity テストで確認する。
+- **モデル再学習**: ルール（開始マス等）や state encoder を変えたら、既存 ONNX は無効。再学習→`export:onnx`→`apps/web/public/models/` 更新が必要。
+- **探索エンジンの符号規約**: MCTS は negamax（各ノードの値は「その局面の手番側」視点、逆伝播で ply ごとに符号反転）。価値の二重反転・相手手番の非反転はバグなので踏襲しない。
+
+---
+
+## 6. Testing and Verification
+
+変更後は可能な範囲で以下を実行し、結果を報告する。
+
+```bash
 npm test
-
-# run lint
-npm run lint
-
-# type check
-npm run typecheck
+npm run verify   # 必要に応じて
 ```
 
-別のパッケージマネージャーを使っている場合は、実際のプロジェクトに合わせて置き換えてください。
-
-例:
-
-```bash
-pnpm install
-pnpm dev
-pnpm build
-pnpm test
-pnpm lint
-pnpm typecheck
-```
+Python を変えた場合は `npm run smoke:learning` / `npm run smoke:critical`、または小さなデータセットで `train_policy_value.py` を 1 epoch CPU で回して通ることを確認する。存在しないコマンドは実行せず、その旨を明記する。
 
 ---
 
-## GitHub Pages Requirements
+## 7. Core Rules（作業マナー）
 
-このプロジェクトは GitHub Pages で公開する前提です。
-
-以下を守ってください。
-
-- 静的サイトとしてビルドできる構成にする
-- サーバー常駐処理を前提にしない
-- SSR が必要な機能を追加しない
-- API Routes やサーバーサイド専用処理を追加しない
-- 認証情報や秘密鍵をフロントエンドに埋め込まない
-- GitHub Pages の base path を考慮する
-- ルーティング、画像、CSS、JS のパスが本番公開 URL で壊れないようにする
-- GitHub Actions で自動デプロイできる構成を優先する
+- 既存の設計・命名・構成を尊重し、依頼範囲に集中する。大規模リファクタは明示要求時のみ。
+- 破壊的変更・データ削除・セキュリティ判断・公式ルール変更は事前に確認する。
+- 秘密情報をコミット/出力しない。`git push` / PR / デプロイはユーザーの明示要求があるまで行わない。
+- 軽微な判断は自律的に行ってよい。最後に変更・検証・残課題を報告する。
 
 ---
 
-## GitHub Pages Type
-
-TODO: どちらか一方を残してください。
-
-### User / Organization Pages
-
-公開 URL:
-
-```text
-https://<user>.github.io/
-```
-
-この場合、通常 base path は `/` です。
-
-### Project Pages
-
-公開 URL:
-
-```text
-https://<user>.github.io/<repo>/
-```
-
-この場合、通常 base path は `/<repo>/` です。
-
-Vite、Astro、Next.js などを使う場合は、base path や asset path の設定を確認してください。
-
----
-
-## Framework Notes
-
-### Vite
-
-Project Pages の場合は、`vite.config.*` の `base` を確認してください。
-
-```ts
-export default defineConfig({
-  base: "/<repo>/",
-});
-```
-
-User / Organization Pages の場合は、通常以下です。
-
-```ts
-export default defineConfig({
-  base: "/",
-});
-```
-
-### Astro
-
-Project Pages の場合は、`astro.config.*` の `site` と `base` を確認してください。
-
-```ts
-export default defineConfig({
-  site: "https://<user>.github.io",
-  base: "/<repo>",
-});
-```
-
-### Next.js
-
-GitHub Pages で使う場合は、静的エクスポート前提にしてください。
-
-- `output: "export"` を使う
-- SSR を使わない
-- API Routes を使わない
-- サーバー上での動的処理を前提にしない
-- 必要に応じて `basePath` と `assetPrefix` を設定する
-- 画像最適化など、Node.js サーバー前提の機能に注意する
-
----
-
-## GitHub Actions
-
-GitHub Pages へのデプロイは、原則として GitHub Actions を使ってください。
-
-workflow を追加または修正する場合は、以下を満たしてください。
-
-- `main` ブランチへの push で実行する
-- 依存関係をインストールする
-- production build を実行する
-- ビルド成果物を GitHub Pages にデプロイする
-- フレームワークに応じた成果物ディレクトリを使う
-
-一般的な成果物ディレクトリ:
-
-- Vite: `dist`
-- Astro: `dist`
-- Next.js static export: `out`
-
-workflow を追加・変更した場合は、README にデプロイ方法を追記してください。
-
----
-
-## Environment Variables and Secrets
-
-環境変数や秘密情報の扱いには注意してください。
-
-- `.env` を Git にコミットしない
-- `.env.local` を Git にコミットしない
-- `.gitignore` に `.env` 系ファイルが含まれていることを確認する
-- API キーや秘密鍵をソースコードに直接書かない
-- ログやエラー出力に秘密情報を表示しない
-- 本番用の秘密鍵をフロントエンドに埋め込まない
-- GitHub Pages 上で動くフロントエンドの環境変数は、公開情報として扱う
-- 必要な環境変数名は README に書いてよい
-- 値そのものは README やコードに書かない
-
-例:
-
-```env
-VITE_API_BASE_URL=
-VITE_PUBLIC_API_KEY=
-```
-
-秘密鍵が必要な処理は、GitHub Pages 上のフロントエンドだけでは実装しないでください。
-
----
-
-## Security Rules
-
-セキュリティ上、以下を守ってください。
-
-- 秘密情報をハードコードしない
-- 不要な依存関係を追加しない
-- 外部入力を扱う場合は XSS やインジェクションに注意する
-- ユーザー生成コンテンツを表示する場合はサニタイズする
-- `dangerouslySetInnerHTML` など危険な API は原則避ける
-- 外部リンクで新しいタブを開く場合は、必要に応じて `rel="noopener noreferrer"` を付ける
-- 認証・認可・課金・個人情報に関わる変更は慎重に扱う
-- セキュリティ上の判断が必要な場合は、作業前に質問する
-
----
-
-## Accessibility
-
-UI を実装または変更する場合は、アクセシビリティを考慮してください。
-
-- ボタン、リンク、見出し、フォームには適切な HTML 要素を使う
-- 画像には必要に応じて `alt` を付ける
-- フォーム入力には label を関連付ける
-- キーボード操作を妨げない
-- 色だけに依存した情報表現を避ける
-- 十分なコントラストを確保する
-- 見出し階層を不自然に飛ばさない
-- フォーカス状態を見えるようにする
-
----
-
-## Design and UI
-
-デザイン作業では以下を意識してください。
-
-- シンプルで読みやすい UI にする
-- 余白、行間、コントラストを整える
-- モバイル表示を考慮する
-- レスポンシブ対応を行う
-- 不要なアニメーションを避ける
-- アニメーションを使う場合は控えめにする
-- 既存のデザイン方針がある場合はそれを優先する
-- UI 変更後は主要画面の表示崩れを確認する
-
----
-
-## Testing and Verification
-
-変更後は、可能な範囲で以下を確認してください。
-
-1. 最小限の対象テスト
-2. lint
-3. typecheck
-4. production build
-5. 必要に応じたブラウザ確認
-
-標準的な確認コマンド:
-
-```bash
-npm run build
-npm test
-npm run lint
-npm run typecheck
-```
-
-コマンドが存在しない場合は、実行せず、その旨を最終報告に明記してください。
-
-テストが存在しない場合でも、以下を確認してください。
-
-- production build が成功する
-- 主要画面が表示される
-- 主要なリンクやボタンが動く
-- コンソールエラーがない
-- GitHub Pages の base path でアセットが壊れない
-
----
-
-## Documentation
-
-以下の場合は README または関連ドキュメントを更新してください。
-
-- セットアップ手順が変わった
-- 開発コマンドが変わった
-- ビルド方法が変わった
-- デプロイ方法が変わった
-- 環境変数が追加・変更された
-- 使い方が変わった
-- 重要な設計判断を追加した
-
-README には、可能な範囲で以下を含めてください。
-
-- プロジェクト概要
-- ローカル起動方法
-- ビルド方法
-- テスト方法
-- デプロイ方法
-- 必要な環境変数名
-- 公開 URL
-
----
-
-## Git and Commit Policy
-
-Git 操作では以下を守ってください。
-
-- 変更前に現在の状態を確認する
-- 関係ないファイルを変更しない
-- 生成物や不要なファイルをコミット対象にしない
-- `.env` や秘密情報をコミットしない
-- 大きな変更は論理的に分ける
-- ユーザーが明示的に求めない限り `git push` しない
-- ユーザーが明示的に求めない限り PR を作らない
-- `git push --force` は明示的な許可なしに実行しない
-
----
-
-## When to Ask Questions
-
-以下の場合は、実装前に質問してください。
-
-- 完了条件が曖昧な場合
-- 複数の実装方針があり、影響が大きく異なる場合
-- データ削除や破壊的変更が必要な場合
-- セキュリティ上の判断が必要な場合
-- 外部サービスの認証、課金、権限が必要な場合
-- GitHub Pages だけでは要件を満たせない場合
-- デザインの方向性が不明で、結果に大きく影響する場合
-
----
-
-## When You May Decide Autonomously
-
-以下は、依頼範囲内であれば自律的に判断して構いません。
-
-- 明らかなバグ修正
-- 型エラーや lint エラーの修正
-- 小さなリファクタリング
-- README の軽微な補足
-- テストの追加
-- アクセシビリティ改善
-- レスポンシブ対応
-- 既存パターンに沿った実装詳細
-
----
-
-## Prohibited Actions
-
-明示的な許可なしに、以下を行わないでください。
-
-- 本番環境のデータを変更・削除する
-- 秘密情報を表示、保存、コミットする
-- 外部サービスで課金が発生する操作を行う
-- 大量の依存関係を追加する
-- フレームワークを勝手に変更する
-- ライセンス不明のコードをコピーする
-- 既存機能を理由なく削除する
-- リポジトリ設定を破壊的に変更する
-- `git push --force` を実行する
-- ユーザーの明示的な依頼なしにデプロイする
-
----
-
-## Implementation Planning
-
-小さな変更は、簡潔な方針を示してから実装してください。
-
-大規模な変更、設計変更、移行作業の場合は、先に Markdown で計画を作成してください。
-
-例:
-
-```text
-IMPLEMENTATION_PLAN.md
-MIGRATION_PLAN.md
-DEPLOYMENT_PLAN.md
-```
-
-計画には以下を含めてください。
-
-- 目的
-- 変更範囲
-- 影響を受けるファイル
-- 実装手順
-- 検証方法
-- リスク
-- ロールバック方針
-
----
-
-## Definition of Done
-
-作業完了条件は以下です。
-
-- 要求された機能または修正が実装されている
-- 依頼範囲外の不要な変更がない
-- production build が成功する
-- テストがある場合は成功する
-- lint がある場合は成功する
-- typecheck がある場合は成功する
-- README または関連ドキュメントが必要に応じて更新されている
-- GitHub Pages で公開する場合、静的ビルドと base path が考慮されている
-- 未解決の問題や確認できなかった項目が明示されている
-- 最後に変更内容と検証結果が報告されている
-
----
-
-## Final Response Format
-
-作業完了時は、以下の形式で報告してください。
+## 8. Final Response Format
 
 ```md
 ## Summary
-
-- 変更内容1
-- 変更内容2
-- 変更内容3
+- 変更内容
 
 ## Verification
-
-- `npm run build`: passed / failed / not run
 - `npm test`: passed / failed / not run
-- `npm run lint`: passed / failed / not run
-- `npm run typecheck`: passed / failed / not run
-- Browser check: passed / not run
+- `npm run verify`: passed / failed / not run
+- Python smoke: passed / not run
 
 ## Notes
-
-- 残課題
-- 注意点
-- 次にやるとよいこと
+- 残課題 / 注意点 / 次にやるとよいこと
 ```
 
-実行できなかった確認項目がある場合は、理由を明記してください。
+実行できなかった確認項目は理由を明記する。詳細な背景は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) と [docs/EVALUATION.md](docs/EVALUATION.md) を参照。

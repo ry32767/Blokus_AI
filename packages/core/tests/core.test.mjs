@@ -11,6 +11,7 @@ import {
   decodeAction,
   encodeAction,
   generateLegalMoves,
+  getFlippedOrientation,
   getOrientations,
   isLegalMove,
   scorePlayer,
@@ -58,9 +59,34 @@ suite.test("piece definitions and orientation counts", () => {
   }
 });
 
+suite.test("orientation flip mirrors the selected shape horizontally", () => {
+  const normalizeCells = (cells) => {
+    const minX = Math.min(...cells.map(([x]) => x));
+    const minY = Math.min(...cells.map(([, y]) => y));
+    return cells
+      .map(([x, y]) => [x - minX, y - minY])
+      .sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
+  };
+  const cellKey = (cells) => cells.map(([x, y]) => `${x},${y}`).join(";");
+
+  for (const orientation of ORIENTATIONS) {
+    const flipped = getFlippedOrientation(orientation);
+    assert.ok(flipped, `${orientation.pieceId}:${orientation.localId} has flipped orientation`);
+    assert.equal(flipped.pieceId, orientation.pieceId);
+
+    const expected = normalizeCells(
+      orientation.cells.map(([x, y]) => [orientation.width - 1 - x, y]),
+    );
+    assert.equal(cellKey(flipped.cells), cellKey(expected));
+    assert.equal(getFlippedOrientation(flipped).globalId, orientation.globalId);
+  }
+});
+
 suite.test("initial legal move counts", () => {
-  assert.equal(generateLegalMoves(createInitialState("chooseStart")).length, 116, "chooseStart moves");
-  assert.equal(generateLegalMoves(createInitialState("fixedStart")).length, 58, "fixedStart moves");
+  // Official interior start cells (4,4)/(9,9) allow pieces to extend in every
+  // direction, so there are far more opening placements than the corner variant.
+  assert.equal(generateLegalMoves(createInitialState("chooseStart")).length, 828, "chooseStart moves");
+  assert.equal(generateLegalMoves(createInitialState("fixedStart")).length, 414, "fixedStart moves");
 });
 
 suite.test("action encoding round-trips", () => {
@@ -78,7 +104,8 @@ suite.test("move application updates state and forbids voluntary pass", () => {
   assert.ok(first);
   state = applyMove(state, first);
   assert.equal(state.currentPlayer, 1);
-  assert.equal(state.board[0], 0);
+  // I1 (single cell) must cover player 0's start cell A = (4,4) -> board index 4*14+4.
+  assert.equal(state.board[4 * 14 + 4], 0);
   assert.equal(isLegalMove(state, { kind: "pass", player: 1 }), false, "pass disabled while moves exist");
 });
 

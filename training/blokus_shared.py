@@ -12,9 +12,11 @@ ROOT = Path(__file__).resolve().parent.parent
 BOARD_SIZE = 14
 EMPTY = -1
 STATE_PLANES = 51
+# Official Blokus Duo start cells: interior squares (4,4) and (9,9), not the corners.
+# Must match packages/core/src/constants.js START_POINTS (JS/Python parity).
 START_POINTS = {
-    "A": {"x": 0, "y": 0},
-    "B": {"x": BOARD_SIZE - 1, "y": BOARD_SIZE - 1},
+    "A": {"x": 4, "y": 4},
+    "B": {"x": 9, "y": 9},
 }
 ORTHOGONAL_DIRS = ((1, 0), (-1, 0), (0, 1), (0, -1))
 DIAGONAL_DIRS = ((1, 1), (1, -1), (-1, 1), (-1, -1))

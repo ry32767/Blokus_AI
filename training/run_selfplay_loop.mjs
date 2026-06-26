@@ -23,7 +23,7 @@ function parseArgs(argv) {
     minWinRate: 0.55,
     minAverageMargin: 0.5,
     publishBest: false,
-    baseReportDir: join(root, "training", "reports", "selfplay"),
+    baseReportDir: join(root, "training", "runs", "selfplay"),
     bestModelPath: defaultBestModel,
     bestDifficulty: "master",
   };

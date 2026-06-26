@@ -1,6 +1,44 @@
 ﻿# BlokusAI Duo
 
-GitHub Pages で公開できる、2 人制 Blokus Duo 型の静的 AI 対戦アプリです。
+GitHub Pages で公開できる、2 人制 **公式 Blokus Duo** の静的 AI 対戦アプリです。
+
+> 目的は「世界ランカー（人間トップ）に勝てる AI」。現状評価と改善ロードマップは [docs/EVALUATION.md](docs/EVALUATION.md)、全体設計は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を参照。
+>
+> ⚠️ 開始マスを公式の `(4,4)/(9,9)` に変更したため、**過去に学習した ONNX モデル/データセットは無効**です。再生成・再学習・再 `export:onnx` が必要です（それまで `learned`/`master` は旧変種の重みで動作するため、再学習を推奨）。
+
+## 世界ランカーに勝つための学習（プルしてそのまま回す手順）
+
+リポジトリをプルした人が、強い AI を育てるために実行する最短手順です。詳細は [docs/TRAINING_WORKFLOW.md](docs/TRAINING_WORKFLOW.md)。
+
+**学習の考え方**: AlphaZero ループ。`master` AI で自己対戦 → 重要局面を含むデータで policy-value ネットを学習 → 候補を現役 best と対戦させ、強くなっていれば（SPRT 昇格判定）入れ替え。これを多反復まわすほど強くなります。GPU 推奨（CPU でも可だが遅い）。
+
+```bash
+# 0) 準備（GPU PyTorch を入れる。CPU だけなら python:install:cpu）
+npm install
+npm run python:install:gpu
+npm run python:check          # 環境が整っているか確認
+
+# 1) まず全経路のドライラン（数分・CPU）。warm-up→bootstrap→学習→SPRT→resume を検証
+npm run train:full -- --smoke
+
+# 2) 本格学習を最後まで回す（large ネット・GPU・多反復・SPRT・自動再開対応）
+npm run train:full            # 長時間。中断したら次のコマンドで再開
+npm run train:full -- --resume
+
+# 3) 学習の様子を見る（ターミナルに盤面 / メトリクス推移）
+npm run view:selfplay -- --summary training/runs/full/runs/<iter>/checkpoints/train_summary.json
+
+# 4) 納得のいく best をブラウザ公開モデルへ反映
+npm run export:onnx:pv -- --checkpoint training/runs/full/model_registry/<best>/policy_value_best.pt --out apps/web/public/models/blokus_policy_value.onnx
+npm run verify                # build smoke 込みで確認
+```
+
+ポイント:
+
+- **`train:full` が「準備完了後に回すだけ」の入口**。Phase 1 で強い探索 AI（`expert_plus`）の自己対戦から初期ネットを bootstrap し、Phase 2 で `master` 自己対戦＋SPRT 昇格を反復します。出力は `training/runs/full/` に集約（公開モデルは上書きしません）。
+- 規模は `--net-size small|medium|large`（強さ優先は `large`=256x20）、`--iterations` で反復数、`--workers`/`--games` で自己対戦量を調整。GPU が無ければ `--cpu`。
+- 自己対戦のローカル推論は `onnxruntime-node`（WASM 比 約3.5倍速、`npm install` で自動導入。未導入なら `onnxruntime-web` に自動フォールバック）。
+- 強さの目安・反復数の計画は [docs/EVALUATION.md](docs/EVALUATION.md) を参照。
 
 対応モード:
 
@@ -11,7 +49,8 @@ GitHub Pages で公開できる、2 人制 Blokus Duo 型の静的 AI 対戦ア�
 実装済みの主な内容:
 
 - 14 x 14 board
-- start point `(0,0)` / `(13,13)`
+- start point `(4,4)` / `(9,9)`（公式 Blokus Duo の中央スタート。角ではない）
+- scoring: `-(残りユニットマス) + 15(全配置) + 5(最後がI1)`（高いほど良い）
 - `chooseStart` / `fixedStart`
 - 21 ピース、91 orientation
 - 合法手生成
@@ -79,8 +118,8 @@ npm test
 - 各ピースの orientation 数
 - orientation 合計が 91
 - 各プレイヤーの総セル数が 89
-- 初期合法手数 `chooseStart = 116`
-- 初期合法手数 `fixedStart = 58`
+- 初期合法手数 `chooseStart = 828`
+- 初期合法手数 `fixedStart = 414`
 - action encode / decode
 - pass 制約
 - scoring
@@ -123,8 +162,8 @@ npm run typecheck
 
 ## Training Environment Quick Start
 
-学習・GPU・Critical Replay の実行手順は `TRAINING_RUNBOOK.md` にまとめています。
-学習関連 CLI の具体的な全オプションは `TRAINING_OPTIONS.md` にまとめています。
+学習・GPU・Critical Replay の実行手順は [docs/TRAINING_RUNBOOK.md](docs/TRAINING_RUNBOOK.md) にまとめています。
+学習関連 CLI の具体的な全オプションは [docs/TRAINING_OPTIONS.md](docs/TRAINING_OPTIONS.md) にまとめています。
 
 まず環境を確認する場合:
 
@@ -153,7 +192,7 @@ npm run smoke:critical
 学習コマンドのオプションを確認する場合:
 
 ```text
-TRAINING_OPTIONS.md
+docs/TRAINING_OPTIONS.md
 ```
 
 ## GitHub Pages Deploy
@@ -230,6 +269,12 @@ Value Head 付きモデルの学習:
 
 ```bash
 npm run train:policy-value -- --dataset training/data/smoke-expert-100.jsonl --epochs 1 --output-dir training/checkpoints/policy-value-100 --cpu
+```
+
+Large JSONL datasets are read lazily through an indexed Dataset. For long runs, trim the replay buffer sample count and enable DataLoader workers instead of loading the whole JSONL into memory:
+
+```bash
+npm run train:policy-value -- --dataset training/data/expert-plus-sampled-fast-selfplay-30000.jsonl --max-samples 300000 --epochs 20 --batch-size 4096 --num-workers 8 --dataset-cache-dir training/cache/jsonl-index --output-dir training/checkpoints/pv-30000-sample-20ep
 ```
 
 Policy-Value ONNX export:

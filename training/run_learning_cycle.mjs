@@ -10,7 +10,7 @@ const defaultBrowserModel = join(root, "apps", "web", "public", "models", "bloku
 
 function parseArgs(argv) {
   const stamp = new Date().toISOString().replaceAll(":", "-");
-  const reportDir = join(root, "training", "reports", stamp);
+  const reportDir = join(root, "training", "runs", "cycle", stamp);
   return {
     games: 100,
     startPolicy: "fixedStart",

@@ -104,17 +104,26 @@ BlokusAI Duo を GitHub Pages で公開できる静的 Web アプリとして維
 - Elo gating tests
 - build smoke check
 
-## 3.2 まだ未実装
+## 3.2 実装済み（旧「未実装」から更新）
 
-### Critical State Replay 系
+### Critical State Replay 系（実装済み）
 
-- trajectory 保存
-- critical state 選択
-- replay action 選択
-- branch replay
-- q_values / policy_probs / blunder_score 生成
-- branch dataset 保存
-- mixed dataset loader での統合
+`training/critical_state_replay/` に実装済みで、`npm run generate:trajectory` / `npm run generate:critical-replay` / `npm run smoke:critical` で動作する。
+
+- trajectory 保存（`collect_trajectory.mjs`）
+- critical state 選択（`select_critical_states.mjs`）
+- replay action 選択 / branch replay（`replay_from_state.mjs`）
+- q_values / policy_probs / blunder_score 生成・branch dataset 保存（`build_branch_dataset.mjs`, `branch_dataset_schema.mjs`）
+- mixed dataset loader での統合（`train_policy_value.py` ＋ `indexed_jsonl_dataset.py`）
+
+## 3.3 まだ未実装 / 今後
+
+### 探索・学習の強化（2026-06 評価で要対応と判明、[docs/EVALUATION.md](EVALUATION.md) 参照）
+
+- leaf バッチ推論 ＋ WASM マルチスレッドによる sim/手の増加
+- 大型ネットでの再学習サイクルと in-browser レイテンシ検証
+- SPRT / 多数局による昇格ゲート、生成と昇格の分離
+- 終盤の領域分解・支配手枝刈り・領域厳密解
 
 ### 将来の大規模運用
 
@@ -194,8 +203,8 @@ Critical State Replay では、1 対局の中から重要局面だけを抜き�
 ### Docs
 
 - `README.md`
-- `blokus_ai_duo_spec.md`
-- `IMPLEMENTATION_PLAN.md`
+- `docs/spec.md`
+- `docs/IMPLEMENTATION_PLAN.md`
 
 ---
 

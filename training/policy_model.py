@@ -13,6 +13,22 @@ from torch import nn
 
 from blokus_shared import ACTION_SIZE, ORIENTATION_COUNT, STATE_PLANES
 
+# Named trunk sizes. "large" is the target for a world-class run; "small" is the
+# fast default used by smokes. Approx params (policy-value): small ~0.34M,
+# medium ~3M, large ~24M. See docs/TRAINING_WORKFLOW.md for in-browser caveats.
+NET_PRESETS = {
+    "small": (64, 4),
+    "medium": (128, 10),
+    "large": (256, 20),
+}
+
+
+def resolve_arch(net_size=None, channels=None, residual_blocks=None):
+    """Explicit --channels/--residual-blocks override a --net-size preset; the
+    preset overrides the 64x4 fallback. Returns (channels, residual_blocks)."""
+    base_c, base_b = NET_PRESETS.get(net_size, (64, 4))
+    return (int(channels) if channels else base_c, int(residual_blocks) if residual_blocks else base_b)
+
 
 class ResidualBlock(nn.Module):
     def __init__(self, channels: int):

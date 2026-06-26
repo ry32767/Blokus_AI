@@ -27,7 +27,15 @@ def main():
     args = parser.parse_args()
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
-    model = PolicyNet() if args.model_kind == "policy" else PolicyValueNet()
+    # Reconstruct with the trunk size recorded at training time; older checkpoints
+    # without "model_arch" default to the original 64-channel / 4-block trunk.
+    arch = checkpoint.get("model_arch") or {}
+    channels = int(arch.get("channels", 64))
+    residual_blocks = int(arch.get("residual_blocks", 4))
+    if args.model_kind == "policy":
+        model = PolicyNet(channels=channels, residual_blocks=residual_blocks)
+    else:
+        model = PolicyValueNet(channels=channels, residual_blocks=residual_blocks)
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
 

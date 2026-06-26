@@ -34,46 +34,51 @@ if (!preset) {
   throw new Error("Usage: npm run preset:<name>. Available presets: smoke:learning, smoke:critical");
 }
 
+// All smoke artifacts go under the gitignored scratch sandbox so they never clutter
+// training/ or overwrite the committed browser model. See docs/TRAINING_WORKFLOW.md.
+const SCRATCH = "training/.scratch";
+
 if (preset === "smoke:learning") {
+  const base = `${SCRATCH}/smoke-learning`;
   await npmScript("generate:orientations");
   await npmScript("generate:dataset", [
     "--games", "100",
-    "--out", "training/data/smoke-expert-100.jsonl",
+    "--out", `${base}/dataset.jsonl`,
     "--teacher-ms", "10",
     "--start-policy", "fixedStart",
   ]);
   await npmScript("train:policy", maybeCpu([
-    "--dataset", "training/data/smoke-expert-100.jsonl",
+    "--dataset", `${base}/dataset.jsonl`,
     "--epochs", "1",
-    "--output-dir", useCpu ? "training/checkpoints/policy-100-cpu" : "training/checkpoints/policy-100-gpu",
+    "--output-dir", `${base}/policy`,
     "--batch-size", "2048",
   ]));
   await npmScript("train:policy-value", maybeCpu([
-    "--dataset", "training/data/smoke-expert-100.jsonl",
+    "--dataset", `${base}/dataset.jsonl`,
     "--epochs", "1",
-    "--output-dir", useCpu ? "training/checkpoints/policy-value-100-cpu" : "training/checkpoints/policy-value-100-gpu",
+    "--output-dir", `${base}/policy-value`,
     "--batch-size", "2048",
   ]));
   await npmScript("export:onnx", [
-    "--checkpoint",
-    `${useCpu ? "training/checkpoints/policy-100-cpu" : "training/checkpoints/policy-100-gpu"}/policy_latest.pt`,
+    "--checkpoint", `${base}/policy/policy_latest.pt`,
+    "--out", `${base}/blokus_policy.onnx`,
   ]);
+  // NOTE: a 100-game smoke must NOT overwrite the published browser model.
   await npmScript("export:onnx:pv", [
-    "--checkpoint",
-    `${useCpu ? "training/checkpoints/policy-value-100-cpu" : "training/checkpoints/policy-value-100-gpu"}/policy_value_latest.pt`,
-    "--out",
-    "apps/web/public/models/blokus_policy_value.onnx",
+    "--checkpoint", `${base}/policy-value/policy_value_latest.pt`,
+    "--out", `${base}/blokus_policy_value.onnx`,
   ]);
 } else if (preset === "smoke:critical") {
+  const base = `${SCRATCH}/smoke-critical`;
   await npmScript("generate:trajectory", [
     "--games", "10",
     "--ai", "expert",
     "--teacher-ms", "50",
-    "--out", "training/dataset/trajectories/smoke-expert-10",
+    "--out", `${base}/trajectories`,
   ]);
   await npmScript("generate:critical-replay", [
-    "--trajectories", "training/dataset/trajectories/smoke-expert-10",
-    "--out", "training/dataset/critical_replay/smoke-expert-10",
+    "--trajectories", `${base}/trajectories`,
+    "--out", `${base}/critical_replay`,
     "--critical-states-per-game", "2",
     "--top-k-actions", "4",
     "--playouts-per-action", "1",
@@ -82,9 +87,9 @@ if (preset === "smoke:learning") {
     "--teacher-model", "apps/web/public/models/blokus_policy_value.onnx",
   ]);
   await npmScript("train:policy-value", maybeCpu([
-    "--dataset", "training/dataset/critical_replay/smoke-expert-10/records.jsonl",
+    "--dataset", `${base}/critical_replay/records.jsonl`,
     "--epochs", "1",
-    "--output-dir", useCpu ? "training/checkpoints/critical-smoke-cpu" : "training/checkpoints/critical-smoke-gpu",
+    "--output-dir", `${base}/checkpoints`,
     "--batch-size", "512",
   ]));
 } else {

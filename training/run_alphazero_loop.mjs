@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { runArena } from "./arena_runtime.mjs";
 import { runParallelArena } from "./run_arena.mjs";
-import { eloGateDecision } from "./elo.mjs";
+import { eloGateDecision, sprtGateDecision } from "./elo.mjs";
 import { ensureModelRegistry, getActiveModel, promoteModel, registerModel } from "./model_registry.mjs";
 import { runDistributedSelfPlay } from "./run_distributed_selfplay.mjs";
 import { sampleReplayBufferToDataset } from "./replay_buffer.mjs";
@@ -23,8 +23,13 @@ function parseArgs(argv) {
     sampleSize: 4096,
     epochs: 1,
     batchSize: 2048,
+    netSize: null,
+    valueTargetMode: null,
     cpu: false,
-    evaluationGames: 6,
+    // A 6-game gate is statistically meaningless (it rejects genuine improvements
+    // most of the time). Default to a larger sample and require a small positive
+    // Elo lower bound before promotion. Raise further (or add SPRT) for real runs.
+    evaluationGames: 40,
     arenaParallel: 1,
     selfplayAi: "master",
     selfplayOpponent: null,
@@ -35,13 +40,22 @@ function parseArgs(argv) {
     baselineMs: 300,
     minWinRate: 0.55,
     minAverageMargin: 0.5,
-    minEloLowerBoundGain: 0,
+    minEloLowerBoundGain: 10,
+    // Promotion gate against the active best: "elo" = Elo lower-bound over a fixed
+    // number of games; "sprt" = sequential test (more sample-efficient over many
+    // iterations). SPRT tests H0:+elo0 vs H1:+elo1.
+    gateMode: "elo",
+    sprtElo0: 0,
+    sprtElo1: 10,
+    sprtAlpha: 0.05,
+    sprtBeta: 0.05,
     kFactor: 24,
     publishBest: false,
+    resume: false,
     initialModel: null,
     replayBufferDir: join(root, "training", "replay_buffer"),
     registryDir: join(root, "training", "model_registry"),
-    baseReportDir: join(root, "training", "reports", "alphazero"),
+    baseReportDir: join(root, "training", "runs", "alphazero"),
     maxBufferShards: 64,
     maxBufferSamples: 50000,
     startPolicy: "fixedStart",
@@ -51,6 +65,14 @@ function parseArgs(argv) {
     moveTopK: 8,
     moveSamplingPlies: 16,
     moveCandidatePool: 64,
+    // AlphaZero self-play exploration applied inside the MCTS actor (keeps the
+    // visit-count policy target valid). Defaults ON for the loop because
+    // exploitation-only self-play converges to a fixed point and stops improving.
+    // The arena evaluation uses its own greedy specs and is unaffected.
+    rootDirichletWeight: 0.25,
+    rootDirichletAlpha: 0.3,
+    mctsSamplingTemperature: 1.0,
+    mctsSamplingPlies: 16,
   };
   const positional = [];
   for (let index = 0; index < argv.length; index += 1) {
@@ -88,6 +110,14 @@ function parseArgs(argv) {
     if (value === "--min-win-rate") args.minWinRate = Number(argv[++index]);
     if (value === "--min-average-margin") args.minAverageMargin = Number(argv[++index]);
     if (value === "--min-elo-lower-bound-gain") args.minEloLowerBoundGain = Number(argv[++index]);
+    if (value === "--resume") args.resume = true;
+    if (value === "--net-size") args.netSize = argv[++index];
+    if (value === "--value-target-mode") args.valueTargetMode = argv[++index];
+    if (value === "--gate-mode") args.gateMode = argv[++index];
+    if (value === "--sprt-elo0") args.sprtElo0 = Number(argv[++index]);
+    if (value === "--sprt-elo1") args.sprtElo1 = Number(argv[++index]);
+    if (value === "--sprt-alpha") args.sprtAlpha = Number(argv[++index]);
+    if (value === "--sprt-beta") args.sprtBeta = Number(argv[++index]);
     if (value === "--k-factor") args.kFactor = Number(argv[++index]);
     if (value === "--publish-best") {
       const next = argv[index + 1];
@@ -111,6 +141,10 @@ function parseArgs(argv) {
     if (value === "--move-top-k") args.moveTopK = Math.max(1, Number(argv[++index]));
     if (value === "--move-sampling-plies") args.moveSamplingPlies = Math.max(0, Number(argv[++index]));
     if (value === "--move-candidate-pool") args.moveCandidatePool = Math.max(1, Number(argv[++index]));
+    if (value === "--root-dirichlet-weight") args.rootDirichletWeight = Math.max(0, Number(argv[++index]));
+    if (value === "--root-dirichlet-alpha") args.rootDirichletAlpha = Math.max(1e-3, Number(argv[++index]));
+    if (value === "--mcts-sampling-temperature") args.mctsSamplingTemperature = Math.max(0, Number(argv[++index]));
+    if (value === "--mcts-sampling-plies") args.mctsSamplingPlies = Math.max(0, Number(argv[++index]));
   }
   applyPositionalArgs(args, positional);
   return args;
@@ -216,6 +250,10 @@ async function runIteration(config, iterationIndex) {
     moveTopK: config.moveTopK,
     moveSamplingPlies: config.moveSamplingPlies,
     moveCandidatePool: config.moveCandidatePool,
+    rootDirichletWeight: config.rootDirichletWeight,
+    rootDirichletAlpha: config.rootDirichletAlpha,
+    mctsSamplingTemperature: config.mctsSamplingTemperature,
+    mctsSamplingPlies: config.mctsSamplingPlies,
   });
 
   const sampled = await sampleReplayBufferToDataset(config.replayBufferDir, datasetPath, {
@@ -235,6 +273,8 @@ async function runIteration(config, iterationIndex) {
     String(config.epochs),
     "--batch-size",
     String(config.batchSize),
+    ...(config.netSize ? ["--net-size", config.netSize] : []),
+    ...(config.valueTargetMode ? ["--value-target-mode", config.valueTargetMode] : []),
     ...(config.cpu ? ["--cpu"] : []),
   ]);
 
@@ -296,7 +336,20 @@ async function runIteration(config, iterationIndex) {
   const candidate = arena.contestants.candidate;
   const winRate = candidate.wins / Math.max(1, config.evaluationGames);
   const baselineName = opponentName;
-  const useActiveBestEloGate = activeModel && !config.evaluationOpponent;
+  const useActiveBestGate = activeModel && !config.evaluationOpponent;
+  const useSprtGate = useActiveBestGate && config.gateMode === "sprt";
+  const sprtResult = useSprtGate
+    ? sprtGateDecision({
+      arena,
+      candidateName: "candidate",
+      opponentName: baselineName,
+      elo0: config.sprtElo0,
+      elo1: config.sprtElo1,
+      alpha: config.sprtAlpha,
+      beta: config.sprtBeta,
+    })
+    : null;
+  const useActiveBestEloGate = useActiveBestGate && !useSprtGate;
   const eloDecision = useActiveBestEloGate
     ? eloGateDecision({
       arena,
@@ -308,9 +361,26 @@ async function runIteration(config, iterationIndex) {
       minLowerBoundGain: config.minEloLowerBoundGain,
     })
     : null;
-  const promote = useActiveBestEloGate
-    ? eloDecision.promote
-    : (winRate >= config.minWinRate && candidate.averageMargin >= config.minAverageMargin);
+  // Bootstrap: AlphaZero's iteration-0 network IS the first "best" — there is no
+  // prior best to gate against. Without this, an empty registry can never acquire an
+  // active best (a fresh candidate loses to the baseline engine), so the loop self-plays
+  // from the same frozen baseline forever (this was the historical "0 promotions /
+  // activeModelId null" stall). Seed the registry with the first candidate, then gate
+  // every subsequent candidate against the current best.
+  const isBootstrapSeed = !activeModel;
+  const promote = isBootstrapSeed
+    ? true
+    : useSprtGate
+      ? sprtResult.promote
+      : useActiveBestEloGate
+        ? eloDecision.promote
+        : (winRate >= config.minWinRate && candidate.averageMargin >= config.minAverageMargin);
+  if (isBootstrapSeed) {
+    console.log("[gate] bootstrap: no active best yet — seeding the registry with this candidate as best-0.");
+  } else if (useSprtGate) {
+    const s = sprtResult.sprt;
+    console.log(`[gate] SPRT llr=${s.llr} (accept H1>=${s.upper}, H0<=${s.lower}) decision=${s.decision} -> promote=${promote}`);
+  }
 
   const trainingSummary = JSON.parse(await readFile(join(checkpointDir, "train_summary.json"), "utf-8"));
   const registeredModel = await registerModel(config.registryDir, candidatePath, {
@@ -333,7 +403,9 @@ async function runIteration(config, iterationIndex) {
       moveTopK: config.moveTopK,
       moveSamplingPlies: config.moveSamplingPlies,
       moveCandidatePool: config.moveCandidatePool,
+      gateMode: config.gateMode,
       eloDecision,
+      sprtDecision: sprtResult?.sprt ?? null,
     },
     arenaSummaryPath,
     trainingSummaryPath: join(checkpointDir, "train_summary.json"),
@@ -413,9 +485,41 @@ async function runIteration(config, iterationIndex) {
 async function main() {
   const config = parseArgs(process.argv.slice(2));
   await mkdir(config.baseReportDir, { recursive: true });
+  const statePath = join(config.baseReportDir, "loop-state.json");
+
+  // Resume: the registry, replay buffer, and model files all persist on disk, so a
+  // resumed run continues numbering from the last completed iteration and keeps
+  // building on the same active best. Without --resume we start the counter at 0.
+  let startIndex = 0;
+  if (config.resume) {
+    try {
+      const state = JSON.parse(await readFile(statePath, "utf-8"));
+      startIndex = state.completedIterations ?? 0;
+      console.log(`[resume] continuing from iteration ${startIndex + 1} (active best=${state.lastActiveModelId ?? "none"}).`);
+    } catch {
+      console.log("[resume] no loop-state.json found in baseReportDir; starting fresh.");
+    }
+  }
+
   const summaries = [];
-  for (let index = 0; index < config.iterations; index += 1) {
-    summaries.push(await runIteration(config, index));
+  const endIndex = startIndex + config.iterations;
+  for (let index = startIndex; index < endIndex; index += 1) {
+    const summary = await runIteration(config, index);
+    summaries.push(summary);
+    // Human-readable progress line + resumable checkpoint after every iteration.
+    const active = await getActiveModel(config.registryDir);
+    const c = summary.arena?.contestants?.candidate;
+    console.log(
+      `[iter ${index + 1}/${endIndex}] promote=${summary.promote} ` +
+      `candidate W-D-L=${c?.wins ?? "?"}-${c?.draws ?? "?"}-${c?.losses ?? "?"} ` +
+      `activeBest=${active?.id ?? "none"} rating=${active?.rating ?? "?"}`,
+    );
+    await writeFile(statePath, `${JSON.stringify({
+      completedIterations: index + 1,
+      lastActiveModelId: active?.id ?? null,
+      lastActiveRating: active?.rating ?? null,
+      updatedAt: new Date().toISOString(),
+    }, null, 2)}\n`, "utf-8");
   }
   const loopSummary = {
     generatedAt: new Date().toISOString(),
@@ -423,6 +527,7 @@ async function main() {
     registryDir: config.registryDir,
     replayBufferDir: config.replayBufferDir,
     initialModel: config.initialModel ?? null,
+    gateMode: config.gateMode,
     selfplay: {
       ai: config.selfplayAi,
       opponent: config.selfplayOpponent ?? null,
@@ -431,6 +536,10 @@ async function main() {
       moveTopK: config.moveTopK,
       moveSamplingPlies: config.moveSamplingPlies,
       moveCandidatePool: config.moveCandidatePool,
+      rootDirichletWeight: config.rootDirichletWeight,
+      rootDirichletAlpha: config.rootDirichletAlpha,
+      mctsSamplingTemperature: config.mctsSamplingTemperature,
+      mctsSamplingPlies: config.mctsSamplingPlies,
     },
     evaluation: {
       opponent: config.evaluationOpponent ?? null,

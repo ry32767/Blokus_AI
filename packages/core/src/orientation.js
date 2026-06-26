@@ -17,3 +17,27 @@ export function getOrientation(globalId) {
 export function getOrientations(pieceId) {
   return ORIENTATIONS_BY_PIECE[pieceId] || [];
 }
+
+function normalizeCells(cells) {
+  const minX = Math.min(...cells.map(([x]) => x));
+  const minY = Math.min(...cells.map(([, y]) => y));
+  return cells
+    .map(([x, y]) => [x - minX, y - minY])
+    .sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
+}
+
+function cellKey(cells) {
+  return cells.map(([x, y]) => `${x},${y}`).join(";");
+}
+
+export function getFlippedOrientation(orientation) {
+  if (!orientation) return null;
+
+  const flippedKey = cellKey(normalizeCells(
+    orientation.cells.map(([x, y]) => [orientation.width - 1 - x, y]),
+  ));
+
+  return getOrientations(orientation.pieceId).find(
+    (candidate) => cellKey(normalizeCells(candidate.cells)) === flippedKey,
+  ) || orientation;
+}

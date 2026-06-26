@@ -24,6 +24,10 @@ function parseArgs(argv) {
     moveTopK: 8,
     moveSamplingPlies: 16,
     moveCandidatePool: 64,
+    rootDirichletWeight: 0,
+    rootDirichletAlpha: 0.3,
+    mctsSamplingTemperature: 0,
+    mctsSamplingPlies: 0,
     seed: 0,
     workerIndex: 0,
     gameIndexOffset: 0,
@@ -47,6 +51,10 @@ function parseArgs(argv) {
     if (value === "--move-top-k") args.moveTopK = Math.max(1, Number(argv[++index]));
     if (value === "--move-sampling-plies") args.moveSamplingPlies = Math.max(0, Number(argv[++index]));
     if (value === "--move-candidate-pool") args.moveCandidatePool = Math.max(1, Number(argv[++index]));
+    if (value === "--root-dirichlet-weight") args.rootDirichletWeight = Math.max(0, Number(argv[++index]));
+    if (value === "--root-dirichlet-alpha") args.rootDirichletAlpha = Math.max(1e-3, Number(argv[++index]));
+    if (value === "--mcts-sampling-temperature") args.mctsSamplingTemperature = Math.max(0, Number(argv[++index]));
+    if (value === "--mcts-sampling-plies") args.mctsSamplingPlies = Math.max(0, Number(argv[++index]));
     if (value === "--seed") args.seed = Number(argv[++index]);
     if (value === "--worker-index") args.workerIndex = Number(argv[++index]);
     if (value === "--game-index-offset") args.gameIndexOffset = Number(argv[++index]);
@@ -75,6 +83,10 @@ async function main() {
     moveTopK: args.moveTopK,
     moveSamplingPlies: args.moveSamplingPlies,
     moveCandidatePool: args.moveCandidatePool,
+    rootDirichletWeight: args.rootDirichletWeight,
+    rootDirichletAlpha: args.rootDirichletAlpha,
+    mctsSamplingTemperature: args.mctsSamplingTemperature,
+    mctsSamplingPlies: args.mctsSamplingPlies,
     seed: args.seed,
     workerId: args.workerId,
     workerIndex: args.workerIndex,

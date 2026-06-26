@@ -1,0 +1,43 @@
+[package]
+name = "blokus-selfplay"
+version = "0.1.0"
+edition = "2021"
+description = "Native (Rust) Blokus Duo deterministic core + self-play scaffold, parity-verified against the JS/Python reference."
+license = "MIT"
+
+[lib]
+name = "blokus_selfplay"
+path = "src/lib.rs"
+
+[[bin]]
+name = "selfplay"
+path = "src/bin/selfplay.rs"
+
+[[bin]]
+name = "parity_check"
+path = "src/bin/parity_check.rs"
+
+[features]
+# Off by default so the crate (and `tests/parity.rs`) builds and tests without
+# the onnxruntime native library. Enable with `--features onnx` to compile the
+# `OnnxPolicyValue` backend and link `ort`/onnxruntime.
+default = []
+onnx = ["dep:ort"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+# ONNX inference backend (optional, behind the `onnx` feature). `ort` can
+# auto-download a matching onnxruntime binary via its `download-binaries`
+# feature. If a native onnxruntime build is unavailable in your environment, a
+# pure-Rust fallback (`tract-onnx`) is documented in README.md as an
+# alternative — swap the dependency and reimplement `OnnxPolicyValue::load`.
+ort = { version = "2.0.0-rc.10", optional = true, default-features = false, features = [
+    "download-binaries",
+] }
+
+[profile.release]
+opt-level = 3
+lto = true

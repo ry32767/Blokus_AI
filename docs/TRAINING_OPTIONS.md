@@ -226,6 +226,23 @@ Policy-only model を学習します。Learned AI 用です。
 npm run train:policy -- --dataset training/data/expert-1k.jsonl --epochs 5 --batch-size 2048 --output-dir training/checkpoints/policy-expert-1k
 ```
 
+Large dataset memory options:
+
+| option | default | note |
+| --- | ---: | --- |
+| `--max-samples` | `0` | Randomly limit samples after JSONL indexing. `0` means use all samples. |
+| `--dataset-cache-dir` | next to dataset | Directory for `.idx.npy` / `.idx.json` JSONL offset cache. |
+| `--rebuild-index-cache` | false | Rebuild the offset cache even when metadata matches. |
+| `--num-workers` | `0` | DataLoader worker count. On Windows, start with `4`-`8` for large JSONL. |
+| `--prefetch-factor` | `2` | DataLoader prefetch per worker. Used only when `--num-workers > 0`. |
+| `--pin-memory` / `--no-pin-memory` | true | Pin host memory when CUDA is used. Disable if host memory pressure is high. |
+
+Example for a large replay buffer sample:
+
+```bash
+npm run train:policy -- --dataset training/data/expert-plus-sampled-fast-selfplay-30000.jsonl --max-samples 200000 --epochs 5 --batch-size 4096 --num-workers 8 --dataset-cache-dir training/cache/jsonl-index --output-dir training/checkpoints/policy-large-sample
+```
+
 ## Policy-Value 学習
 
 ### `npm run train:policy-value`
@@ -249,6 +266,25 @@ Policy-Value model を学習します。Master AI 用です。通常 dataset、C
 
 ```bash
 npm run train:policy-value -- --dataset training/configs/mixed-learned-critical.json --epochs 10 --batch-size 2048 --output-dir training/checkpoints/pv-learned-critical
+```
+
+Large dataset memory options:
+
+| option | default | note |
+| --- | ---: | --- |
+| `--max-samples` | `0` | Randomly limit samples after JSONL indexing. This is the direct trainer-side equivalent of replay buffer sample-size trimming. |
+| `--dataset-cache-dir` | next to dataset | Directory for `.idx.npy` / `.idx.json` JSONL offset cache. Use this to keep cache files out of `training/data`. |
+| `--rebuild-index-cache` | false | Rebuild the offset cache even when dataset size / mtime match. |
+| `--num-workers` | `0` | DataLoader worker count. On Windows, start with `4`-`8`; increase only if CPU can feed GPU. |
+| `--prefetch-factor` | `2` | DataLoader prefetch per worker. Used only when `--num-workers > 0`. |
+| `--pin-memory` / `--no-pin-memory` | true | Pin host memory when CUDA is used. Disable if RAM usage is too high. |
+
+The trainer no longer loads JSONL into memory as Python dicts. It builds or reuses a binary offset cache (`.idx.npy`) and reads samples lazily. Dataset mix configs are treated as shards, so policy-value training can read large shard sets sequentially through the DataLoader without materializing all records.
+
+Example for the 30,000-game policy-value dataset without starting from every sample:
+
+```bash
+npm run train:policy-value -- --dataset training/data/expert-plus-sampled-fast-selfplay-30000.jsonl --max-samples 300000 --epochs 20 --batch-size 4096 --num-workers 8 --dataset-cache-dir training/cache/jsonl-index --output-dir training/checkpoints/pv-30000-sample-20ep
 ```
 
 ## Dataset Mix Config
@@ -526,3 +562,56 @@ Model 一覧を表示します。
 | --- | ---: | --- |
 | `--registry-dir` | `training/model_registry` | registry directory。 |
 | `--model-id` | required | promote する model id。 |
+
+---
+
+## 2026-06 追加オプション（強化学習の質）
+
+[docs/EVALUATION.md](EVALUATION.md) の修正に伴い追加した主なオプション。
+
+### ネットワーク容量（`train:policy` / `train:policy-value`）
+
+| option | default | 説明 |
+| --- | ---: | --- |
+| `--channels` | `64` | ResNet trunk のチャンネル数。世界ランカーを狙うなら 128–256 を検討。 |
+| `--residual-blocks` | `4` | residual block 数。10–20 を検討。 |
+
+checkpoint に `model_arch` を記録するため、`export:onnx` は学習時と同じ次元で自動復元する（旧 checkpoint は 64/4 既定）。
+
+### Value target（`train:policy-value`）
+
+| option | default | 説明 |
+| --- | ---: | --- |
+| `--value-target-mode` | `outcome` | `outcome`=勝敗(+1/0/-1)、`margin`=点差正規化(/109)。Blokus Duo は勝敗ゲームのため既定は outcome。`value_target`/`q_values` を持つサンプルは従来通りそれを優先。 |
+
+### 自己対戦の探索（`generate:dataset` / `distributed:selfplay` / `alphazero:loop`）
+
+MCTS の内部で適用される AlphaZero 流の探索。ヒューリスティック再サンプラ（`--move-temperature`）と異なり、**着手が探索の一部のままなので visit 分布の policy 教師が有効に保たれる**。`master` 等の MCTS アクターにのみ作用。
+
+| option | default(loop) | 説明 |
+| --- | ---: | --- |
+| `--root-dirichlet-weight` | `0.25` | root prior に混ぜる Dirichlet ノイズの重み（0 で無効）。 |
+| `--root-dirichlet-alpha` | `0.3` | Dirichlet の α。 |
+| `--mcts-sampling-temperature` | `1.0` | 序盤で visit 分布から着手をサンプリングする温度（0 で argmax）。 |
+| `--mcts-sampling-plies` | `16` | 上記サンプリングを適用する手数。 |
+
+`generate:dataset` / `distributed:selfplay` での既定は 0（無効）。`alphazero:loop` では既定 ON。アリーナ評価は別の貪欲 spec を使うため影響しない。
+
+### 昇格ゲート（`alphazero:loop`）
+
+| option | new default | 説明 |
+| --- | ---: | --- |
+| `--evaluation-games` | `40` | candidate vs best の評価局数。6 局は統計的に無意味だったため引き上げ。実運用では数百局 / SPRT を推奨。 |
+| `--min-elo-lower-bound-gain` | `10` | 昇格に必要な Elo 下限の最小値（正のマージン）。 |
+
+### 昇格ゲートと再開（`alphazero:loop`）
+
+| option | default | 説明 |
+| --- | ---: | --- |
+| `--gate-mode` | `elo` | `elo`=Elo下限ゲート（固定局数）、`sprt`=逐次確率比検定（多反復で効率的）。 |
+| `--sprt-elo0` / `--sprt-elo1` | `0` / `10` | SPRT の帰無/対立仮説 Elo 差。 |
+| `--sprt-alpha` / `--sprt-beta` | `0.05` / `0.05` | SPRT の第一種/第二種過誤率。 |
+| `--resume` | off | `baseReportDir/loop-state.json` から反復番号を継続。registry/replay buffer はディスク永続なので best を引き継いで続行。 |
+
+- **Bootstrap**: active best が未登録の初回は、candidate を無条件に best-0 として seed する（AlphaZero の反復0ネット）。以降は best を上回ることを要求。これにより「永遠に昇格しない」停滞を回避。
+- 各反復ごとに `[iter N/M] promote=… candidate W-D-L=… activeBest=… rating=…` を出力し、`loop-state.json` を更新（中断後 `--resume` で再開可能）。

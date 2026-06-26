@@ -38,9 +38,10 @@ AI は大きく 2 系統を扱う。
 
 - 盤面サイズ: 14 x 14
 - 座標系: 0-indexed
-- 開始マス:
-  - Player 0: `(0, 0)`
-  - Player 1: `(13, 13)`
+- 開始マス（**公式 Blokus Duo の中央スタート。角ではない**）:
+  - Player 0 (A): `(4, 4)`
+  - Player 1 (B): `(9, 9)`
+  - 定義は `packages/core/src/constants.js` と `training/blokus_shared.py`（JS/Python 一致必須）
 
 ### 2.2 ピース
 
@@ -58,7 +59,9 @@ AI は大きく 2 系統を扱う。
 ### 2.4 終局
 
 - 両プレイヤーが連続して pass したら終局
-- スコアは Blokus Duo 公式ルールに従う
+- スコア（`packages/core/src/scoring.js`、高いほど良い）:
+  `score = -(残りユニットマス数) + 15(全ピース配置時) + 5(最後に置いたのが I1)`
+  - 1 プレイヤーのスコア域は概ね `[-89, +20]`、スコア差は約 `[-109, +109]`
 
 ---
 

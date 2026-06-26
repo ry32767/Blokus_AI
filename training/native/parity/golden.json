@@ -1,0 +1,884 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "training/native/parity/gen_golden.mjs",
+  "boardSize": 14,
+  "orientationCount": 91,
+  "actionSize": 17837,
+  "passAction": 17836,
+  "startPoints": {
+    "A": {
+      "x": 4,
+      "y": 4
+    },
+    "B": {
+      "x": 9,
+      "y": 9
+    }
+  },
+  "initialLegalMoveCounts": {
+    "chooseStart": 828,
+    "fixedStart": 414
+  },
+  "actionRoundTrips": [
+    {
+      "action": 0,
+      "player": 0,
+      "decoded": {
+        "kind": "place",
+        "player": 0,
+        "pieceId": "I1",
+        "orientationGlobalId": 0,
+        "x": 0,
+        "y": 0
+      },
+      "reencoded": 0
+    },
+    {
+      "action": 1,
+      "player": 0,
+      "decoded": {
+        "kind": "place",
+        "player": 0,
+        "pieceId": "I1",
+        "orientationGlobalId": 0,
+        "x": 1,
+        "y": 0
+      },
+      "reencoded": 1
+    },
+    {
+      "action": 195,
+      "player": 0,
+      "decoded": {
+        "kind": "place",
+        "player": 0,
+        "pieceId": "I1",
+        "orientationGlobalId": 0,
+        "x": 13,
+        "y": 13
+      },
+      "reencoded": 195
+    },
+    {
+      "action": 196,
+      "player": 0,
+      "decoded": {
+        "kind": "place",
+        "player": 0,
+        "pieceId": "I2",
+        "orientationGlobalId": 1,
+        "x": 0,
+        "y": 0
+      },
+      "reencoded": 196
+    },
+    {
+      "action": 197,
+      "player": 0,
+      "decoded": {
+        "kind": "place",
+        "player": 0,
+        "pieceId": "I2",
+        "orientationGlobalId": 1,
+        "x": 1,
+        "y": 0
+      },
+      "reencoded": 197
+    },
+    {
+      "action": 1207,
+      "player": 0,
+      "decoded": {
+        "kind": "place",
+        "player": 0,
+        "pieceId": "V3",
+        "orientationGlobalId": 6,
+        "x": 3,
+        "y": 2
+      },
+      "reencoded": 1207
+    },
+    {
+      "action": 9000,
+      "player": 0,
+      "decoded": {
+        "kind": "place",
+        "player": 0,
+        "pieceId": "L5",
+        "orientationGlobalId": 45,
+        "x": 12,
+        "y": 12
+      },
+      "reencoded": 9000
+    },
+    {
+      "action": 17835,
+      "player": 0,
+      "decoded": {
+        "kind": "place",
+        "player": 0,
+        "pieceId": "N5",
+        "orientationGlobalId": 90,
+        "x": 13,
+        "y": 13
+      },
+      "reencoded": 17835
+    },
+    {
+      "action": 17836,
+      "player": 0,
+      "decoded": {
+        "kind": "pass",
+        "player": 0
+      },
+      "reencoded": 17836
+    }
+  ],
+  "scoringSamples": {
+    "blankFinishedP0": -89,
+    "allPlacedLastI1": 20,
+    "allPlacedLastI2": 15
+  },
+  "deterministicGames": [
+    {
+      "startPolicy": "fixedStart",
+      "plies": 30,
+      "status": "finished",
+      "finalScoreA": -35,
+      "finalScoreB": -29,
+      "finalBoardSha": "cb0e2b03c4d9092105d3877d57e97e50be02c69819a8375ea004de284c863a04",
+      "positions": [
+        {
+          "ply": 0,
+          "turn": 0,
+          "currentPlayer": 0,
+          "legalMoveCount": 414,
+          "moveIndex": 0,
+          "selectedAction": 60,
+          "boardSha": "d904e1f1e028ba9058a128a6fd724f0f9892ae8fe49c8f7dc2613183f7f8bbca",
+          "stateShaCurrent": "b6dcff710915882ce9e32ddd90539e6f96890f30253f01e5bd7bb137b4a29c3d",
+          "scoreA": -89,
+          "scoreB": -89
+        },
+        {
+          "ply": 1,
+          "turn": 1,
+          "currentPlayer": 1,
+          "legalMoveCount": 414,
+          "moveIndex": 1,
+          "selectedAction": 330,
+          "boardSha": "1cfaf9ce817ef282a3b57ae641fb64341b835d28baca0bb5a205ed7482ae9f6e",
+          "stateShaCurrent": "73fc2c08d24fdff5d711603dcadd0a7ab1bdb158a5e29eb5b80ed6248d3b6bf6",
+          "scoreA": -88,
+          "scoreB": -89
+        },
+        {
+          "ply": 2,
+          "turn": 2,
+          "currentPlayer": 0,
+          "legalMoveCount": 496,
+          "moveIndex": 2,
+          "selectedAction": 268,
+          "boardSha": "235fed8f7a9a01e9d5a5cad11a5f15d383c8cd75ad8c4cfc29a5a404d0f57c39",
+          "stateShaCurrent": "d6e6c2de45f120607b8be8097550bde18ac6f51765a7cde60a3f165c73b25052",
+          "scoreA": -88,
+          "scoreB": -87
+        },
+        {
+          "ply": 3,
+          "turn": 3,
+          "currentPlayer": 1,
+          "legalMoveCount": 490,
+          "moveIndex": 3,
+          "selectedAction": 150,
+          "boardSha": "d1064832cc0690d34ba844915c1e5b424e0c9dd0e80cec9544d31b64bf880956",
+          "stateShaCurrent": "2aaf462561f0663fe57f1d589a2ffff5ce826065c5a6b27d0ba253f4a231ae4e",
+          "scoreA": -86,
+          "scoreB": -87
+        },
+        {
+          "ply": 4,
+          "turn": 4,
+          "currentPlayer": 0,
+          "legalMoveCount": 553,
+          "moveIndex": 4,
+          "selectedAction": 801,
+          "boardSha": "e3c691000685fe37253eb567c1a7c70c156bd2809b7fa9ae9d666cf0fa45d12d",
+          "stateShaCurrent": "e1852ddffa59c30df585a503260751fabbb36e981d0d2c5a9b4cf504d9afbf11",
+          "scoreA": -86,
+          "scoreB": -86
+        },
+        {
+          "ply": 5,
+          "turn": 5,
+          "currentPlayer": 1,
+          "legalMoveCount": 610,
+          "moveIndex": 5,
+          "selectedAction": 753,
+          "boardSha": "2de8e707192e66efebd46717ca6d97fc31a7c78bd0dec0a18b12c1a269c99386",
+          "stateShaCurrent": "894567c345e37a1fa079cde495e5be57050d2f6a21b814fe678478dfeef52165",
+          "scoreA": -83,
+          "scoreB": -86
+        },
+        {
+          "ply": 6,
+          "turn": 6,
+          "currentPlayer": 0,
+          "legalMoveCount": 423,
+          "moveIndex": 6,
+          "selectedAction": 1180,
+          "boardSha": "29278d11542a80629b6fe41e12254fa485d0b314cf1f88aba318455b4f9f6871",
+          "stateShaCurrent": "ce0a51bce92ef26561b2ea8b5df6a6dd3cc5201b53ed988b51a74021c688977a",
+          "scoreA": -83,
+          "scoreB": -83
+        },
+        {
+          "ply": 7,
+          "turn": 7,
+          "currentPlayer": 1,
+          "legalMoveCount": 507,
+          "moveIndex": 7,
+          "selectedAction": 1280,
+          "boardSha": "12093fe360fde5aa5e126678f05a57d4c54b0a7305a5712ed868c083e83537a1",
+          "stateShaCurrent": "e9b58b5b4c6b503b50c09ed74d9db67ba9791725980e3db7e0120d3131814847",
+          "scoreA": -80,
+          "scoreB": -83
+        },
+        {
+          "ply": 8,
+          "turn": 8,
+          "currentPlayer": 0,
+          "legalMoveCount": 374,
+          "moveIndex": 8,
+          "selectedAction": 2048,
+          "boardSha": "7c28dbd16e701ba3c3632bb46b189367b02b6c46b5dfa12d23a4f6857e7cafe1",
+          "stateShaCurrent": "308c42431b44342b0506c45df41544dd37f178e32e9874e1d362248f16ebe092",
+          "scoreA": -80,
+          "scoreB": -80
+        },
+        {
+          "ply": 9,
+          "turn": 9,
+          "currentPlayer": 1,
+          "legalMoveCount": 539,
+          "moveIndex": 9,
+          "selectedAction": 2077,
+          "boardSha": "67e0ded7bea9def3f557f28646224208ed51f8918afcbadf15ad8ad933e6d94d",
+          "stateShaCurrent": "ee404818fda8e055812ca9ebb5f5a65d31b9fc035a7bb86a9bba46603f3e321f",
+          "scoreA": -76,
+          "scoreB": -80
+        },
+        {
+          "ply": 10,
+          "turn": 10,
+          "currentPlayer": 0,
+          "legalMoveCount": 344,
+          "moveIndex": 10,
+          "selectedAction": 2590,
+          "boardSha": "269a4ebbf9234f0cec77de25fc367955a22c0337ee23b4054e16fa1ae572b1d9",
+          "stateShaCurrent": "7bb424fac02e538a5bbcc14bc3c6b00b22215c633306f1f8e9333a639bcfeb96",
+          "scoreA": -76,
+          "scoreB": -76
+        },
+        {
+          "ply": 11,
+          "turn": 11,
+          "currentPlayer": 1,
+          "legalMoveCount": 490,
+          "moveIndex": 11,
+          "selectedAction": 2474,
+          "boardSha": "593db20574e29c6d912f064baece4608a506e68573acfdc1d8a63126d4dfbcff",
+          "stateShaCurrent": "49d6c06fa3cb0436f097b482fd2e25cc8dc4091e02199abe4e95757311bcda7b",
+          "scoreA": -72,
+          "scoreB": -76
+        },
+        {
+          "ply": 12,
+          "turn": 12,
+          "currentPlayer": 0,
+          "legalMoveCount": 270,
+          "moveIndex": 12,
+          "selectedAction": 3724,
+          "boardSha": "4c96a496be3b6445b7b853dcbda3719b6d1d7fc6de3aaadaa8688bb82f2a11e2",
+          "stateShaCurrent": "2ae469fa7c11215169f60ff29942fb35bd5c7bbbbddd6c2ef37c1140d38fede8",
+          "scoreA": -72,
+          "scoreB": -72
+        },
+        {
+          "ply": 13,
+          "turn": 13,
+          "currentPlayer": 1,
+          "legalMoveCount": 349,
+          "moveIndex": 13,
+          "selectedAction": 3427,
+          "boardSha": "a963fec02ce57d9a57ee33dc0c1354990b708a1df5e29ed9b234b7c581136fd5",
+          "stateShaCurrent": "c32e1f8154417049a2332a991a3f03f1a5487fc5289f07b8736a396f2669390a",
+          "scoreA": -68,
+          "scoreB": -72
+        },
+        {
+          "ply": 14,
+          "turn": 14,
+          "currentPlayer": 0,
+          "legalMoveCount": 236,
+          "moveIndex": 14,
+          "selectedAction": 5237,
+          "boardSha": "60079870f1dfcc05681eeb36874eda508bc7b08e688337efd6f4d159a345ab52",
+          "stateShaCurrent": "b0c06a6a4ea5583e48897d8452ca4d275a68da05242e01749abc906ca1b157a2",
+          "scoreA": -68,
+          "scoreB": -68
+        },
+        {
+          "ply": 15,
+          "turn": 15,
+          "currentPlayer": 1,
+          "legalMoveCount": 322,
+          "moveIndex": 15,
+          "selectedAction": 5047,
+          "boardSha": "28c72c5b9d269e6b90b5b671fdb755e233295aa38a155a3ae6259315f9239be2",
+          "stateShaCurrent": "5db348cda01bf6cc4c093db0686a482c3c5887ea844f006d2ee9c1fd38ed8946",
+          "scoreA": -64,
+          "scoreB": -68
+        },
+        {
+          "ply": 16,
+          "turn": 16,
+          "currentPlayer": 0,
+          "legalMoveCount": 198,
+          "moveIndex": 16,
+          "selectedAction": 6292,
+          "boardSha": "2519d12fb3e4367f3f9cc13cb763a244c52b674ba8b3ae0d3da7cb5949380b90",
+          "stateShaCurrent": "82f7d0ba8fb7ab6a4ea1508b5d43fb149152471d059e04ae25cd1218bead5511",
+          "scoreA": -64,
+          "scoreB": -64
+        },
+        {
+          "ply": 17,
+          "turn": 17,
+          "currentPlayer": 1,
+          "legalMoveCount": 174,
+          "moveIndex": 17,
+          "selectedAction": 6322,
+          "boardSha": "7c0642bbfcbdb54c7d3d6b8ac95081339897a4d9091e95c771fbbd524e5007da",
+          "stateShaCurrent": "3ee20f86a66dcb10be30222d6f146f7f04fe10a9165088a697dec4d98640136a",
+          "scoreA": -59,
+          "scoreB": -64
+        },
+        {
+          "ply": 18,
+          "turn": 18,
+          "currentPlayer": 0,
+          "legalMoveCount": 138,
+          "moveIndex": 18,
+          "selectedAction": 8403,
+          "boardSha": "0a8602b6b9ccbaffbc1a348653a104a816123daa2c619898d0ae404ee1660564",
+          "stateShaCurrent": "a2615612a3501c5ba0dd0718b24152476ba22d3cdc60facce4eb720a8aecef45",
+          "scoreA": -59,
+          "scoreB": -59
+        },
+        {
+          "ply": 19,
+          "turn": 19,
+          "currentPlayer": 1,
+          "legalMoveCount": 132,
+          "moveIndex": 19,
+          "selectedAction": 9235,
+          "boardSha": "6bd98692c103f193ccd4326e1f25aa92ee36b7adee471676e68fad040b4fb1df",
+          "stateShaCurrent": "2779a65a7eed75936cb99bab6bbf6273ec7eacdc1c3de77d193150de75780a02",
+          "scoreA": -54,
+          "scoreB": -59
+        },
+        {
+          "ply": 20,
+          "turn": 20,
+          "currentPlayer": 0,
+          "legalMoveCount": 61,
+          "moveIndex": 20,
+          "selectedAction": 10843,
+          "boardSha": "ce5f4a698be0c20df94089af9fcff78037996be390c124dabc3d50d0a7f9d3be",
+          "stateShaCurrent": "80cb0b4d13feda210e94f360ca92838e6560620617be4f152d9f2e6e12d2feb3",
+          "scoreA": -54,
+          "scoreB": -54
+        },
+        {
+          "ply": 21,
+          "turn": 21,
+          "currentPlayer": 1,
+          "legalMoveCount": 27,
+          "moveIndex": 21,
+          "selectedAction": 15138,
+          "boardSha": "a4282df3691f1d0e79452ae6ca32e592f853d53d86fe161ded778eed0ad66dfd",
+          "stateShaCurrent": "776d23badc9547dd2a02cf8ec74f1f0302dfef494287bc7cb0d7be3f6480f36f",
+          "scoreA": -49,
+          "scoreB": -54
+        },
+        {
+          "ply": 22,
+          "turn": 22,
+          "currentPlayer": 0,
+          "legalMoveCount": 36,
+          "moveIndex": 22,
+          "selectedAction": 14393,
+          "boardSha": "0645fb78d1254a1d95ecad4e2d18c2a93d3a2578f8951c6fc364d8edd395b872",
+          "stateShaCurrent": "044a965d282094d07cd5e2fbc02b56f62bccd633fc6cb321cb6167f27f2fa5a2",
+          "scoreA": -49,
+          "scoreB": -49
+        },
+        {
+          "ply": 23,
+          "turn": 23,
+          "currentPlayer": 1,
+          "legalMoveCount": 11,
+          "moveIndex": 1,
+          "selectedAction": 7247,
+          "boardSha": "38d72f54bb17a05224a60e9970e16f5ee489e0a6c573cfd6daadc1c1127b0cbd",
+          "stateShaCurrent": "842aee1b81bd66dbb7eff519e64c4fe012254305f81336639847d40c01b9d297",
+          "scoreA": -44,
+          "scoreB": -49
+        },
+        {
+          "ply": 24,
+          "turn": 24,
+          "currentPlayer": 0,
+          "legalMoveCount": 6,
+          "moveIndex": 0,
+          "selectedAction": 2262,
+          "boardSha": "afa78d222ed8b6dfac024b0a41cdc94d67c0c34c786af6ee4f6b9b5b1b1aa459",
+          "stateShaCurrent": "a96de0820fc74d81735b7c093643d12e7203dde208eb47793acc286780cb113e",
+          "scoreA": -44,
+          "scoreB": -44
+        },
+        {
+          "ply": 25,
+          "turn": 25,
+          "currentPlayer": 1,
+          "legalMoveCount": 9,
+          "moveIndex": 7,
+          "selectedAction": 17470,
+          "boardSha": "93bd245fabb6daf006cb8d81a4ba50acc8d62ce4e4518746d2c50defa59895c4",
+          "stateShaCurrent": "a74d32914d51607ca2042bf7dc478e3706a334957f32a90c10a7f106bfae1f16",
+          "scoreA": -40,
+          "scoreB": -44
+        },
+        {
+          "ply": 26,
+          "turn": 26,
+          "currentPlayer": 0,
+          "legalMoveCount": 1,
+          "moveIndex": 0,
+          "selectedAction": 7064,
+          "boardSha": "e2fc8a98502d76a4b52430b9424038603cf85c0e2d6ae510cdfaf44db8f8f1fd",
+          "stateShaCurrent": "846c820d046164d5f943401a6bb9315ae03fcd4a1f7ec4336e04bc8b5c6d8811",
+          "scoreA": -40,
+          "scoreB": -39
+        },
+        {
+          "ply": 27,
+          "turn": 27,
+          "currentPlayer": 1,
+          "legalMoveCount": 4,
+          "moveIndex": 3,
+          "selectedAction": 11846,
+          "boardSha": "2c39d74415c3fc9f365cef21807601f167d3b7896ebaec578701a246c8502596",
+          "stateShaCurrent": "31eb3315303bbb2b09a4075c648b062bfbc843c02b4f3a8f8c16ae656e20c713",
+          "scoreA": -35,
+          "scoreB": -39
+        },
+        {
+          "ply": 28,
+          "turn": 28,
+          "currentPlayer": 0,
+          "legalMoveCount": 1,
+          "moveIndex": 0,
+          "selectedAction": 17836,
+          "boardSha": "556afd8813ad6ef6bb341a9a3a4454b788c7e7f278c05bd814500067b79d64ab",
+          "stateShaCurrent": "39846831c581adc73b46414011f34309aa6586463d231457960fb23142887dc3",
+          "scoreA": -35,
+          "scoreB": -34
+        },
+        {
+          "ply": 29,
+          "turn": 29,
+          "currentPlayer": 1,
+          "legalMoveCount": 1,
+          "moveIndex": 0,
+          "selectedAction": 8444,
+          "boardSha": "556afd8813ad6ef6bb341a9a3a4454b788c7e7f278c05bd814500067b79d64ab",
+          "stateShaCurrent": "a4474354a95c7769622fd7c11d2f302709a6547b6cb48453717bd89d198bd043",
+          "scoreA": -35,
+          "scoreB": -34
+        }
+      ]
+    },
+    {
+      "startPolicy": "chooseStart",
+      "plies": 30,
+      "status": "finished",
+      "finalScoreA": -35,
+      "finalScoreB": -29,
+      "finalBoardSha": "cb0e2b03c4d9092105d3877d57e97e50be02c69819a8375ea004de284c863a04",
+      "positions": [
+        {
+          "ply": 0,
+          "turn": 0,
+          "currentPlayer": 0,
+          "legalMoveCount": 828,
+          "moveIndex": 0,
+          "selectedAction": 60,
+          "boardSha": "d904e1f1e028ba9058a128a6fd724f0f9892ae8fe49c8f7dc2613183f7f8bbca",
+          "stateShaCurrent": "b6dcff710915882ce9e32ddd90539e6f96890f30253f01e5bd7bb137b4a29c3d",
+          "scoreA": -89,
+          "scoreB": -89
+        },
+        {
+          "ply": 1,
+          "turn": 1,
+          "currentPlayer": 1,
+          "legalMoveCount": 414,
+          "moveIndex": 1,
+          "selectedAction": 330,
+          "boardSha": "1cfaf9ce817ef282a3b57ae641fb64341b835d28baca0bb5a205ed7482ae9f6e",
+          "stateShaCurrent": "73fc2c08d24fdff5d711603dcadd0a7ab1bdb158a5e29eb5b80ed6248d3b6bf6",
+          "scoreA": -88,
+          "scoreB": -89
+        },
+        {
+          "ply": 2,
+          "turn": 2,
+          "currentPlayer": 0,
+          "legalMoveCount": 496,
+          "moveIndex": 2,
+          "selectedAction": 268,
+          "boardSha": "235fed8f7a9a01e9d5a5cad11a5f15d383c8cd75ad8c4cfc29a5a404d0f57c39",
+          "stateShaCurrent": "d6e6c2de45f120607b8be8097550bde18ac6f51765a7cde60a3f165c73b25052",
+          "scoreA": -88,
+          "scoreB": -87
+        },
+        {
+          "ply": 3,
+          "turn": 3,
+          "currentPlayer": 1,
+          "legalMoveCount": 490,
+          "moveIndex": 3,
+          "selectedAction": 150,
+          "boardSha": "d1064832cc0690d34ba844915c1e5b424e0c9dd0e80cec9544d31b64bf880956",
+          "stateShaCurrent": "2aaf462561f0663fe57f1d589a2ffff5ce826065c5a6b27d0ba253f4a231ae4e",
+          "scoreA": -86,
+          "scoreB": -87
+        },
+        {
+          "ply": 4,
+          "turn": 4,
+          "currentPlayer": 0,
+          "legalMoveCount": 553,
+          "moveIndex": 4,
+          "selectedAction": 801,
+          "boardSha": "e3c691000685fe37253eb567c1a7c70c156bd2809b7fa9ae9d666cf0fa45d12d",
+          "stateShaCurrent": "e1852ddffa59c30df585a503260751fabbb36e981d0d2c5a9b4cf504d9afbf11",
+          "scoreA": -86,
+          "scoreB": -86
+        },
+        {
+          "ply": 5,
+          "turn": 5,
+          "currentPlayer": 1,
+          "legalMoveCount": 610,
+          "moveIndex": 5,
+          "selectedAction": 753,
+          "boardSha": "2de8e707192e66efebd46717ca6d97fc31a7c78bd0dec0a18b12c1a269c99386",
+          "stateShaCurrent": "894567c345e37a1fa079cde495e5be57050d2f6a21b814fe678478dfeef52165",
+          "scoreA": -83,
+          "scoreB": -86
+        },
+        {
+          "ply": 6,
+          "turn": 6,
+          "currentPlayer": 0,
+          "legalMoveCount": 423,
+          "moveIndex": 6,
+          "selectedAction": 1180,
+          "boardSha": "29278d11542a80629b6fe41e12254fa485d0b314cf1f88aba318455b4f9f6871",
+          "stateShaCurrent": "ce0a51bce92ef26561b2ea8b5df6a6dd3cc5201b53ed988b51a74021c688977a",
+          "scoreA": -83,
+          "scoreB": -83
+        },
+        {
+          "ply": 7,
+          "turn": 7,
+          "currentPlayer": 1,
+          "legalMoveCount": 507,
+          "moveIndex": 7,
+          "selectedAction": 1280,
+          "boardSha": "12093fe360fde5aa5e126678f05a57d4c54b0a7305a5712ed868c083e83537a1",
+          "stateShaCurrent": "e9b58b5b4c6b503b50c09ed74d9db67ba9791725980e3db7e0120d3131814847",
+          "scoreA": -80,
+          "scoreB": -83
+        },
+        {
+          "ply": 8,
+          "turn": 8,
+          "currentPlayer": 0,
+          "legalMoveCount": 374,
+          "moveIndex": 8,
+          "selectedAction": 2048,
+          "boardSha": "7c28dbd16e701ba3c3632bb46b189367b02b6c46b5dfa12d23a4f6857e7cafe1",
+          "stateShaCurrent": "308c42431b44342b0506c45df41544dd37f178e32e9874e1d362248f16ebe092",
+          "scoreA": -80,
+          "scoreB": -80
+        },
+        {
+          "ply": 9,
+          "turn": 9,
+          "currentPlayer": 1,
+          "legalMoveCount": 539,
+          "moveIndex": 9,
+          "selectedAction": 2077,
+          "boardSha": "67e0ded7bea9def3f557f28646224208ed51f8918afcbadf15ad8ad933e6d94d",
+          "stateShaCurrent": "ee404818fda8e055812ca9ebb5f5a65d31b9fc035a7bb86a9bba46603f3e321f",
+          "scoreA": -76,
+          "scoreB": -80
+        },
+        {
+          "ply": 10,
+          "turn": 10,
+          "currentPlayer": 0,
+          "legalMoveCount": 344,
+          "moveIndex": 10,
+          "selectedAction": 2590,
+          "boardSha": "269a4ebbf9234f0cec77de25fc367955a22c0337ee23b4054e16fa1ae572b1d9",
+          "stateShaCurrent": "7bb424fac02e538a5bbcc14bc3c6b00b22215c633306f1f8e9333a639bcfeb96",
+          "scoreA": -76,
+          "scoreB": -76
+        },
+        {
+          "ply": 11,
+          "turn": 11,
+          "currentPlayer": 1,
+          "legalMoveCount": 490,
+          "moveIndex": 11,
+          "selectedAction": 2474,
+          "boardSha": "593db20574e29c6d912f064baece4608a506e68573acfdc1d8a63126d4dfbcff",
+          "stateShaCurrent": "49d6c06fa3cb0436f097b482fd2e25cc8dc4091e02199abe4e95757311bcda7b",
+          "scoreA": -72,
+          "scoreB": -76
+        },
+        {
+          "ply": 12,
+          "turn": 12,
+          "currentPlayer": 0,
+          "legalMoveCount": 270,
+          "moveIndex": 12,
+          "selectedAction": 3724,
+          "boardSha": "4c96a496be3b6445b7b853dcbda3719b6d1d7fc6de3aaadaa8688bb82f2a11e2",
+          "stateShaCurrent": "2ae469fa7c11215169f60ff29942fb35bd5c7bbbbddd6c2ef37c1140d38fede8",
+          "scoreA": -72,
+          "scoreB": -72
+        },
+        {
+          "ply": 13,
+          "turn": 13,
+          "currentPlayer": 1,
+          "legalMoveCount": 349,
+          "moveIndex": 13,
+          "selectedAction": 3427,
+          "boardSha": "a963fec02ce57d9a57ee33dc0c1354990b708a1df5e29ed9b234b7c581136fd5",
+          "stateShaCurrent": "c32e1f8154417049a2332a991a3f03f1a5487fc5289f07b8736a396f2669390a",
+          "scoreA": -68,
+          "scoreB": -72
+        },
+        {
+          "ply": 14,
+          "turn": 14,
+          "currentPlayer": 0,
+          "legalMoveCount": 236,
+          "moveIndex": 14,
+          "selectedAction": 5237,
+          "boardSha": "60079870f1dfcc05681eeb36874eda508bc7b08e688337efd6f4d159a345ab52",
+          "stateShaCurrent": "b0c06a6a4ea5583e48897d8452ca4d275a68da05242e01749abc906ca1b157a2",
+          "scoreA": -68,
+          "scoreB": -68
+        },
+        {
+          "ply": 15,
+          "turn": 15,
+          "currentPlayer": 1,
+          "legalMoveCount": 322,
+          "moveIndex": 15,
+          "selectedAction": 5047,
+          "boardSha": "28c72c5b9d269e6b90b5b671fdb755e233295aa38a155a3ae6259315f9239be2",
+          "stateShaCurrent": "5db348cda01bf6cc4c093db0686a482c3c5887ea844f006d2ee9c1fd38ed8946",
+          "scoreA": -64,
+          "scoreB": -68
+        },
+        {
+          "ply": 16,
+          "turn": 16,
+          "currentPlayer": 0,
+          "legalMoveCount": 198,
+          "moveIndex": 16,
+          "selectedAction": 6292,
+          "boardSha": "2519d12fb3e4367f3f9cc13cb763a244c52b674ba8b3ae0d3da7cb5949380b90",
+          "stateShaCurrent": "82f7d0ba8fb7ab6a4ea1508b5d43fb149152471d059e04ae25cd1218bead5511",
+          "scoreA": -64,
+          "scoreB": -64
+        },
+        {
+          "ply": 17,
+          "turn": 17,
+          "currentPlayer": 1,
+          "legalMoveCount": 174,
+          "moveIndex": 17,
+          "selectedAction": 6322,
+          "boardSha": "7c0642bbfcbdb54c7d3d6b8ac95081339897a4d9091e95c771fbbd524e5007da",
+          "stateShaCurrent": "3ee20f86a66dcb10be30222d6f146f7f04fe10a9165088a697dec4d98640136a",
+          "scoreA": -59,
+          "scoreB": -64
+        },
+        {
+          "ply": 18,
+          "turn": 18,
+          "currentPlayer": 0,
+          "legalMoveCount": 138,
+          "moveIndex": 18,
+          "selectedAction": 8403,
+          "boardSha": "0a8602b6b9ccbaffbc1a348653a104a816123daa2c619898d0ae404ee1660564",
+          "stateShaCurrent": "a2615612a3501c5ba0dd0718b24152476ba22d3cdc60facce4eb720a8aecef45",
+          "scoreA": -59,
+          "scoreB": -59
+        },
+        {
+          "ply": 19,
+          "turn": 19,
+          "currentPlayer": 1,
+          "legalMoveCount": 132,
+          "moveIndex": 19,
+          "selectedAction": 9235,
+          "boardSha": "6bd98692c103f193ccd4326e1f25aa92ee36b7adee471676e68fad040b4fb1df",
+          "stateShaCurrent": "2779a65a7eed75936cb99bab6bbf6273ec7eacdc1c3de77d193150de75780a02",
+          "scoreA": -54,
+          "scoreB": -59
+        },
+        {
+          "ply": 20,
+          "turn": 20,
+          "currentPlayer": 0,
+          "legalMoveCount": 61,
+          "moveIndex": 20,
+          "selectedAction": 10843,
+          "boardSha": "ce5f4a698be0c20df94089af9fcff78037996be390c124dabc3d50d0a7f9d3be",
+          "stateShaCurrent": "80cb0b4d13feda210e94f360ca92838e6560620617be4f152d9f2e6e12d2feb3",
+          "scoreA": -54,
+          "scoreB": -54
+        },
+        {
+          "ply": 21,
+          "turn": 21,
+          "currentPlayer": 1,
+          "legalMoveCount": 27,
+          "moveIndex": 21,
+          "selectedAction": 15138,
+          "boardSha": "a4282df3691f1d0e79452ae6ca32e592f853d53d86fe161ded778eed0ad66dfd",
+          "stateShaCurrent": "776d23badc9547dd2a02cf8ec74f1f0302dfef494287bc7cb0d7be3f6480f36f",
+          "scoreA": -49,
+          "scoreB": -54
+        },
+        {
+          "ply": 22,
+          "turn": 22,
+          "currentPlayer": 0,
+          "legalMoveCount": 36,
+          "moveIndex": 22,
+          "selectedAction": 14393,
+          "boardSha": "0645fb78d1254a1d95ecad4e2d18c2a93d3a2578f8951c6fc364d8edd395b872",
+          "stateShaCurrent": "044a965d282094d07cd5e2fbc02b56f62bccd633fc6cb321cb6167f27f2fa5a2",
+          "scoreA": -49,
+          "scoreB": -49
+        },
+        {
+          "ply": 23,
+          "turn": 23,
+          "currentPlayer": 1,
+          "legalMoveCount": 11,
+          "moveIndex": 1,
+          "selectedAction": 7247,
+          "boardSha": "38d72f54bb17a05224a60e9970e16f5ee489e0a6c573cfd6daadc1c1127b0cbd",
+          "stateShaCurrent": "842aee1b81bd66dbb7eff519e64c4fe012254305f81336639847d40c01b9d297",
+          "scoreA": -44,
+          "scoreB": -49
+        },
+        {
+          "ply": 24,
+          "turn": 24,
+          "currentPlayer": 0,
+          "legalMoveCount": 6,
+          "moveIndex": 0,
+          "selectedAction": 2262,
+          "boardSha": "afa78d222ed8b6dfac024b0a41cdc94d67c0c34c786af6ee4f6b9b5b1b1aa459",
+          "stateShaCurrent": "a96de0820fc74d81735b7c093643d12e7203dde208eb47793acc286780cb113e",
+          "scoreA": -44,
+          "scoreB": -44
+        },
+        {
+          "ply": 25,
+          "turn": 25,
+          "currentPlayer": 1,
+          "legalMoveCount": 9,
+          "moveIndex": 7,
+          "selectedAction": 17470,
+          "boardSha": "93bd245fabb6daf006cb8d81a4ba50acc8d62ce4e4518746d2c50defa59895c4",
+          "stateShaCurrent": "a74d32914d51607ca2042bf7dc478e3706a334957f32a90c10a7f106bfae1f16",
+          "scoreA": -40,
+          "scoreB": -44
+        },
+        {
+          "ply": 26,
+          "turn": 26,
+          "currentPlayer": 0,
+          "legalMoveCount": 1,
+          "moveIndex": 0,
+          "selectedAction": 7064,
+          "boardSha": "e2fc8a98502d76a4b52430b9424038603cf85c0e2d6ae510cdfaf44db8f8f1fd",
+          "stateShaCurrent": "846c820d046164d5f943401a6bb9315ae03fcd4a1f7ec4336e04bc8b5c6d8811",
+          "scoreA": -40,
+          "scoreB": -39
+        },
+        {
+          "ply": 27,
+          "turn": 27,
+          "currentPlayer": 1,
+          "legalMoveCount": 4,
+          "moveIndex": 3,
+          "selectedAction": 11846,
+          "boardSha": "2c39d74415c3fc9f365cef21807601f167d3b7896ebaec578701a246c8502596",
+          "stateShaCurrent": "31eb3315303bbb2b09a4075c648b062bfbc843c02b4f3a8f8c16ae656e20c713",
+          "scoreA": -35,
+          "scoreB": -39
+        },
+        {
+          "ply": 28,
+          "turn": 28,
+          "currentPlayer": 0,
+          "legalMoveCount": 1,
+          "moveIndex": 0,
+          "selectedAction": 17836,
+          "boardSha": "556afd8813ad6ef6bb341a9a3a4454b788c7e7f278c05bd814500067b79d64ab",
+          "stateShaCurrent": "39846831c581adc73b46414011f34309aa6586463d231457960fb23142887dc3",
+          "scoreA": -35,
+          "scoreB": -34
+        },
+        {
+          "ply": 29,
+          "turn": 29,
+          "currentPlayer": 1,
+          "legalMoveCount": 1,
+          "moveIndex": 0,
+          "selectedAction": 8444,
+          "boardSha": "556afd8813ad6ef6bb341a9a3a4454b788c7e7f278c05bd814500067b79d64ab",
+          "stateShaCurrent": "a4474354a95c7769622fd7c11d2f302709a6547b6cb48453717bd89d198bd043",
+          "scoreA": -35,
+          "scoreB": -34
+        }
+      ]
+    }
+  ]
+}

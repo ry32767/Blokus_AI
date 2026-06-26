@@ -26,6 +26,10 @@ function parseArgs(argv) {
     maxBufferSamples: 50000,
     startPolicy: "fixedStart",
     policyTargetSource: "visit",
+    rootDirichletWeight: 0,
+    rootDirichletAlpha: 0.3,
+    mctsSamplingTemperature: 0,
+    mctsSamplingPlies: 0,
     moveTemperature: 0,
     moveTopK: 8,
     moveSamplingPlies: 16,
@@ -55,6 +59,10 @@ function parseArgs(argv) {
     if (value === "--move-top-k") args.moveTopK = Math.max(1, Number(argv[++index]));
     if (value === "--move-sampling-plies") args.moveSamplingPlies = Math.max(0, Number(argv[++index]));
     if (value === "--move-candidate-pool") args.moveCandidatePool = Math.max(1, Number(argv[++index]));
+    if (value === "--root-dirichlet-weight") args.rootDirichletWeight = Math.max(0, Number(argv[++index]));
+    if (value === "--root-dirichlet-alpha") args.rootDirichletAlpha = Math.max(1e-3, Number(argv[++index]));
+    if (value === "--mcts-sampling-temperature") args.mctsSamplingTemperature = Math.max(0, Number(argv[++index]));
+    if (value === "--mcts-sampling-plies") args.mctsSamplingPlies = Math.max(0, Number(argv[++index]));
     if (value === "--shard-compression") args.shardCompression = argv[++index];
     if (value === "--seed") args.seed = normalizeSeed(argv[++index]);
   }
@@ -106,6 +114,14 @@ async function runWorker(workerSpec) {
         String(workerSpec.moveSamplingPlies),
         "--move-candidate-pool",
         String(workerSpec.moveCandidatePool),
+        "--root-dirichlet-weight",
+        String(workerSpec.rootDirichletWeight ?? 0),
+        "--root-dirichlet-alpha",
+        String(workerSpec.rootDirichletAlpha ?? 0.3),
+        "--mcts-sampling-temperature",
+        String(workerSpec.mctsSamplingTemperature ?? 0),
+        "--mcts-sampling-plies",
+        String(workerSpec.mctsSamplingPlies ?? 0),
         ...(workerSpec.modelPath ? ["--model-path", workerSpec.modelPath] : []),
         ...(workerSpec.blackModel ? ["--black-model", workerSpec.blackModel] : []),
         ...(workerSpec.whiteModel ? ["--white-model", workerSpec.whiteModel] : []),
@@ -168,6 +184,10 @@ export async function runDistributedSelfPlay(config = {}) {
     moveTopK: Math.max(1, Number(config.moveTopK ?? 8)),
     moveSamplingPlies: Math.max(0, Number(config.moveSamplingPlies ?? 16)),
     moveCandidatePool: Math.max(1, Number(config.moveCandidatePool ?? 64)),
+    rootDirichletWeight: Math.max(0, Number(config.rootDirichletWeight ?? 0)),
+    rootDirichletAlpha: Math.max(1e-3, Number(config.rootDirichletAlpha ?? 0.3)),
+    mctsSamplingTemperature: Math.max(0, Number(config.mctsSamplingTemperature ?? 0)),
+    mctsSamplingPlies: Math.max(0, Number(config.mctsSamplingPlies ?? 0)),
   };
   }).map((workerSpec) => ({
     ...workerSpec,

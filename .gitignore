@@ -14,6 +14,11 @@ training/replay_buffer*/
 training/model_registry*/
 training/distributed_queue*/
 training/__pycache__/
+training/.scratch/
+training/cache/
+training/*.idx.npy
+training/*.idx.json
+training/native/**/target/
 *.pyc
 *.log
 coverage/

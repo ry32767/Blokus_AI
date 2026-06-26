@@ -36,6 +36,13 @@ export function parseArgs(argv) {
     moveTopK: 8,
     moveSamplingPlies: 16,
     moveCandidatePool: 64,
+    // AlphaZero-style exploration applied INSIDE the MCTS actor (master). Unlike the
+    // heuristic moveTemperature resampler above, these keep the MCTS visit-count policy
+    // target valid because the played move is always part of the search.
+    rootDirichletWeight: 0,
+    rootDirichletAlpha: 0.3,
+    mctsSamplingTemperature: 0,
+    mctsSamplingPlies: 0,
     seed: 0,
     workerId: "worker-001",
     workerIndex: 0,
@@ -60,6 +67,10 @@ export function parseArgs(argv) {
     if (value === "--move-top-k") args.moveTopK = Math.max(1, Number(argv[++index]));
     if (value === "--move-sampling-plies") args.moveSamplingPlies = Math.max(0, Number(argv[++index]));
     if (value === "--move-candidate-pool") args.moveCandidatePool = Math.max(1, Number(argv[++index]));
+    if (value === "--root-dirichlet-weight") args.rootDirichletWeight = Math.max(0, Number(argv[++index]));
+    if (value === "--root-dirichlet-alpha") args.rootDirichletAlpha = Math.max(1e-3, Number(argv[++index]));
+    if (value === "--mcts-sampling-temperature") args.mctsSamplingTemperature = Math.max(0, Number(argv[++index]));
+    if (value === "--mcts-sampling-plies") args.mctsSamplingPlies = Math.max(0, Number(argv[++index]));
     if (value === "--seed") args.seed = normalizeSeed(argv[++index]);
     if (value === "--worker-id") args.workerId = argv[++index];
     if (value === "--worker-index") args.workerIndex = Number(argv[++index]);
@@ -144,12 +155,21 @@ function sampleCandidateMove(state, legalMoves, teacherMove, config, rng) {
 
 export async function playTrainingGame(config) {
   const rng = config.rng ?? Math.random;
+  // Exploration knobs read by the MCTS actor (apps/web/src/ai/policyValueMctsAi.js).
+  // They are inert for non-MCTS actors and keep the visit-count policy target valid.
+  const explorationSpec = {
+    rootDirichletWeight: config.rootDirichletWeight ?? 0,
+    rootDirichletAlpha: config.rootDirichletAlpha ?? 0.3,
+    moveSamplingTemperature: config.mctsSamplingTemperature ?? 0,
+    moveSamplingPlies: config.mctsSamplingPlies ?? 0,
+  };
   const black = normalizeTrainingAiSpec({
     difficulty: config.blackAi ?? "expert",
     modelPath: config.blackModel,
     timeLimitMs: config.teacherMs,
     label: "black",
     rng,
+    ...explorationSpec,
   });
   const white = normalizeTrainingAiSpec({
     difficulty: config.whiteAi ?? "expert",
@@ -157,6 +177,7 @@ export async function playTrainingGame(config) {
     timeLimitMs: config.teacherMs,
     label: "white",
     rng,
+    ...explorationSpec,
   });
   let state = createInitialState(config.startPolicy);
   const samples = [];
@@ -366,6 +387,10 @@ function runDatasetWorker(config, games, out, workerIndex, gameIndexOffset, seed
     "--move-top-k", String(config.moveTopK ?? 8),
     "--move-sampling-plies", String(config.moveSamplingPlies ?? 16),
     "--move-candidate-pool", String(config.moveCandidatePool ?? 64),
+    "--root-dirichlet-weight", String(config.rootDirichletWeight ?? 0),
+    "--root-dirichlet-alpha", String(config.rootDirichletAlpha ?? 0.3),
+    "--mcts-sampling-temperature", String(config.mctsSamplingTemperature ?? 0),
+    "--mcts-sampling-plies", String(config.mctsSamplingPlies ?? 0),
     "--seed", String(workerSeed),
     "--worker-id", `worker-${String(seedWorkerIndex + 1).padStart(3, "0")}`,
     "--worker-index", String(seedWorkerIndex),
