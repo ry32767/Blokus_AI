@@ -12,6 +12,8 @@ GitHub Pages で公開できる、2 人制 **公式 Blokus Duo** の静的 AI �
 
 **学習の考え方**: AlphaZero ループ。`master` AI で自己対戦 → 重要局面を含むデータで policy-value ネットを学習 → 候補を現役 best と対戦させ、強くなっていれば（SPRT 昇格判定）入れ替え。これを多反復まわすほど強くなります。GPU 推奨（CPU でも可だが遅い）。
 
+学習は 2 フェーズです。**Phase 1 → Phase 2 の順に、別々のコマンドで**実行します（同じ registry / replay buffer / 出力先 `training/runs/full/` を共有）。
+
 ```bash
 # 0) 準備（GPU PyTorch を入れる。CPU だけなら python:install:cpu）
 npm install
@@ -21,22 +23,27 @@ npm run python:check          # 環境が整っているか確認
 # 1) まず全経路のドライラン（数分・CPU）。warm-up→bootstrap→学習→SPRT→resume を検証
 npm run train:full -- --smoke
 
-# 2) 本格学習を最後まで回す（large ネット・GPU・多反復・SPRT・自動再開対応）
-npm run train:full            # 長時間。中断したら次のコマンドで再開
-npm run train:full -- --resume
+# 2) Phase 1: コールドスタート warm-up（強い探索 AI expert_plus の自己対戦 → 初期ネットを best-0 として bootstrap）
+npm run train:full -- --phase1
 
-# 3) 学習の様子を見る（ターミナルに盤面 / メトリクス推移）
+# 3) Phase 2: 本番の自己対戦ループ（best から master 自己対戦 ＋ SPRT 昇格、多反復）
+npm run train:full -- --phase2     # 長時間。中断しても、もう一度同じコマンドで続きから再開できる
+
+# 4) 学習の様子を見る（ターミナルに盤面 / メトリクス推移）
 npm run view:selfplay -- --summary training/runs/full/runs/<iter>/checkpoints/train_summary.json
 
-# 4) 納得のいく best をブラウザ公開モデルへ反映
+# 5) 納得のいく best をブラウザ公開モデルへ反映
 npm run export:onnx:pv -- --checkpoint training/runs/full/model_registry/<best>/policy_value_best.pt --out apps/web/public/models/blokus_policy_value.onnx
 npm run verify                # build smoke 込みで確認
 ```
 
+> Phase 1 と Phase 2 をまとめて一括で回したい場合は、引数なしの `npm run train:full`（= Phase 1 → Phase 2 を連続実行）も使えます。
+
 ポイント:
 
-- **`train:full` が「準備完了後に回すだけ」の入口**。Phase 1 で強い探索 AI（`expert_plus`）の自己対戦から初期ネットを bootstrap し、Phase 2 で `master` 自己対戦＋SPRT 昇格を反復します。出力は `training/runs/full/` に集約（公開モデルは上書きしません）。
-- 規模は `--net-size small|medium|large`（強さ優先は `large`=256x20）、`--iterations` で反復数、`--workers`/`--games` で自己対戦量を調整。GPU が無ければ `--cpu`。
+- **Phase 1（`--phase1`）は最初に一度だけ**。旧変種の無効モデルを使わず、`expert_plus` の自己対戦で初期データを作り、最初のネットを best-0 として seed します。
+- **Phase 2（`--phase2`）が本番**。`--phase1` が seed した best から続き、`master` 自己対戦＋SPRT で強い候補だけを昇格。中断したら同じ `--phase2` を再実行すれば続きから再開します。
+- 規模は `--net-size small|medium|large`（強さ優先は `large`=256x20）、`--iterations` で反復数、`--workers`/`--games` で自己対戦量を調整。GPU が無ければ `--cpu`。各フェーズ共通で指定できます（例: `npm run train:full -- --phase2 --net-size large --iterations 30`）。
 - 自己対戦のローカル推論は `onnxruntime-node`（WASM 比 約3.5倍速、`npm install` で自動導入。未導入なら `onnxruntime-web` に自動フォールバック）。
 - 強さの目安・反復数の計画は [docs/EVALUATION.md](docs/EVALUATION.md) を参照。
 

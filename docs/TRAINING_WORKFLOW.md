@@ -95,12 +95,18 @@ npm run train:policy-value -- --dataset <data> --net-size large --epochs 20 --ba
 
 ```bash
 npm run train:full -- --smoke    # まず全経路のドライラン（数分）。warm-up→bootstrap→main→SPRT→resume を検証
-npm run train:full               # 本番（large ネット・GPU・多反復・SPRT・resume 対応）
-npm run train:full -- --resume   # 中断した本番を続きから
+
+# Phase を分けて実行（推奨。同じ registry / buffer / 出力先を共有）
+npm run train:full -- --phase1   # Phase 1 のみ: コールドスタート warm-up → best-0 bootstrap（最初に一度だけ）
+npm run train:full -- --phase2   # Phase 2 のみ: best から master 自己対戦 ＋ SPRT。中断したら同じコマンドで再開
+
+# まとめて一括で回す場合
+npm run train:full               # Phase 1 → Phase 2 を連続実行（large・GPU・多反復・SPRT・resume 対応）
+npm run train:full -- --resume   # 中断した一括ランを Phase 2 から続きで
 ```
 
-- **Phase 1（コールドスタート warm-up）**: 旧変種の無効モデルを使わず、**強い探索 AI（expert_plus）の自己対戦**で初期データを作り、最初のネットを best-0 として bootstrap。
-- **Phase 2（自己対戦）**: best から master 自己対戦（Dirichlet＋温度）で反復し、**SPRT ゲート**で昇格。`--resume` で再開可能。
+- **Phase 1（コールドスタート warm-up, `--phase1`）**: 旧変種の無効モデルを使わず、**強い探索 AI（expert_plus）の自己対戦**で初期データを作り、最初のネットを best-0 として bootstrap。最初に一度だけ実行。
+- **Phase 2（自己対戦, `--phase2`）**: best から master 自己対戦（Dirichlet＋温度）で反復し、**SPRT ゲート**で昇格。中断後は同じ `--phase2`（内部で `--resume`）で続きから再開可能。
 - 出力は `training/runs/full/`（best は `model_registry/`）。進捗は `[iter N/M] …` 行と `npm run view:selfplay -- --summary <…>/train_summary.json`。
 - 主要な上書き: `--net-size` `--iterations` `--warmup-iterations` `--workers` `--games` `--epochs` `--evaluation-games` `--teacher-ms` `--base-dir`（全フラグは [TRAINING_OPTIONS.md](TRAINING_OPTIONS.md)）。
 - 納得のいく best が出たら公開モデルへ反映: `npm run export:onnx:pv -- --checkpoint <…/policy_value_best.pt> --out apps/web/public/models/blokus_policy_value.onnx`。

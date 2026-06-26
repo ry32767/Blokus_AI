@@ -24,6 +24,8 @@ function parseArgs(argv) {
   const smoke = argv.includes("--smoke");
   const resume = argv.includes("--resume");
   const cpu = argv.includes("--cpu");
+  const onlyPhase1 = argv.includes("--phase1");
+  const onlyPhase2 = argv.includes("--phase2");
   // Recommended real-run defaults for a single mid-range GPU (e.g. RTX 4060 Ti).
   const real = {
     netSize: "large",
@@ -54,7 +56,7 @@ function parseArgs(argv) {
     cpu: true,
   };
   const base = smoke ? smokeCfg : real;
-  const out = { ...base, smoke, resume, cpu: cpu || base.cpu };
+  const out = { ...base, smoke, resume, cpu: cpu || base.cpu, onlyPhase1, onlyPhase2 };
   // Allow --key value overrides. Numeric keys are coerced; netSize/baseDir stay strings.
   const map = {
     "--net-size": "netSize",
@@ -113,8 +115,13 @@ function sharedArgs(cfg) {
 const USAGE = `BlokusAI Duo — full training campaign
 
   npm run train:full -- --smoke      # tiny end-to-end dry-run (validate the pipeline)
-  npm run train:full                 # REAL campaign (large net, GPU, many iterations)
+  npm run train:full                 # REAL campaign: Phase 1 then Phase 2 in one go
   npm run train:full -- --resume     # continue an interrupted real campaign
+
+Run the two phases as separate commands (same shared registry / buffer / report dir):
+  npm run train:full -- --phase1     # Phase 1 only: cold-start warm-up -> bootstrap best-0
+  npm run train:full -- --phase2     # Phase 2 only: resume + master self-play + SPRT
+  (run --phase1 first; --phase2 resumes from the best it seeded. Re-run --phase2 to continue.)
 
 Overrides: --net-size --warmup-iterations --iterations --workers --games --teacher-ms
            --epochs --sample-size --batch-size --evaluation-games --base-dir --cpu
@@ -128,9 +135,18 @@ async function main() {
     return;
   }
   const cfg = parseArgs(rawArgs);
+  if (cfg.onlyPhase1 && cfg.onlyPhase2) {
+    console.error("Use either --phase1 or --phase2, not both (omit both to run the full campaign).");
+    process.exit(1);
+  }
+  // Which phases to run this invocation. Default (neither flag) = both.
+  const runP1 = !cfg.onlyPhase2 && !cfg.resume;
+  const runP2 = !cfg.onlyPhase1;
+  const phaseLabel = cfg.onlyPhase1 ? "phase 1 only" : cfg.onlyPhase2 ? "phase 2 only" : "phase 1 + 2";
   console.log("BlokusAI Duo — full training campaign");
   console.log(JSON.stringify({
     mode: cfg.smoke ? "smoke (dry-run)" : "real",
+    phases: phaseLabel,
     netSize: cfg.netSize,
     warmupIterations: cfg.warmupIterations,
     mainIterations: cfg.iterations,
@@ -147,25 +163,33 @@ async function main() {
   }
 
   // Phase 1: cold-start warm-up via expert_plus self-play (seeds best-0). Skipped on
-  // --resume (the registry already holds an active best from the prior run).
-  if (!cfg.resume) {
+  // --resume or --phase2 (the registry already holds an active best from a prior run).
+  if (runP1) {
     await runLoop("Phase 1: cold-start warm-up (expert_plus self-play)", [
       "--iterations", String(cfg.warmupIterations),
       "--selfplay-ai", "expert_plus",
       ...sharedArgs(cfg),
     ]);
-  } else {
+  } else if (runP2) {
     console.log("\n[resume] skipping Phase 1 warm-up; continuing the main self-play loop.");
   }
 
   // Phase 2: iterated self-play from the trained best (master) with SPRT gating.
-  await runLoop("Phase 2: self-play campaign (master + SPRT, resumable)", [
-    "--resume",
-    "--iterations", String(cfg.iterations),
-    "--selfplay-ai", "master",
-    "--gate-mode", "sprt",
-    ...sharedArgs(cfg),
-  ]);
+  if (runP2) {
+    await runLoop("Phase 2: self-play campaign (master + SPRT, resumable)", [
+      "--resume",
+      "--iterations", String(cfg.iterations),
+      "--selfplay-ai", "master",
+      "--gate-mode", "sprt",
+      ...sharedArgs(cfg),
+    ]);
+  }
+
+  if (cfg.onlyPhase1) {
+    console.log(`\nPhase 1 done. Best-0 seeded under ${cfg.baseDir}/model_registry. ` +
+      `Continue with:\n  npm run train:full -- --phase2`);
+    return;
+  }
 
   console.log(`\nDone. Best model + history under ${cfg.baseDir}. ` +
     `Publish a chosen candidate with:\n  npm run export:onnx:pv -- --checkpoint <…/policy_value_best.pt> --out apps/web/public/models/blokus_policy_value.onnx`);
