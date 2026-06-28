@@ -32,22 +32,27 @@
   - 盤面: `cell==EMPTY(-1)?0:(cell+1)` を行優先（index=y*14+x）で並べた 196 バイト。
   - 状態テンソル: `plane(0..51) → y(0..14) → x(0..14)` 順の `f32` リトルエンディアン。
 
-ネイティブ側は `cargo test`（パリティテスト）で **golden.json と完全一致**することを検証する。これが通って初めて、自己対戦の出力（JSONL）を既存の Python トレーナへ流せる。
+ネイティブ側は `npm run native:test`（パリティテスト）で **golden.json と完全一致**することを検証する。これが通って初めて、自己対戦の出力（JSONL）を既存の Python トレーナへ流せる。
 
 ## ディレクトリ
 
 ```
 training/native/
-├── README.md                  # インデックス
+├── README.md                  # インデックス（薄い。設計はこのファイル、crate 詳細は下の README）
 ├── parity/
 │   ├── gen_golden.mjs         # ゴールデン基準の生成（Node, 検証済み）
 │   └── golden.json            # 言語非依存の基準（生成物）
 └── blokus-selfplay/           # Rust crate（cargo）
     ├── Cargo.toml
-    ├── src/lib.rs             # board/rules/encoder/action/scoring（JSから移植）
-    ├── src/bin/selfplay.rs    # 自己対戦→JSONL（まずは random-legal policy）
-    ├── src/bin/parity_check.rs# golden.json と突き合わせて PASS/FAIL 表示
-    └── tests/parity.rs        # cargo test でのパリティ検証
+    ├── README.md             # crate API・JSONL スキーマ・全フラグ
+    ├── src/
+    │   ├── lib.rs            # 公開 API（下の各モジュールを束ねる）
+    │   ├── constants.rs board.rs rules.rs scoring.rs action.rs orientation.rs encoding.rs
+    │   │                     # JS core を移植した決定的コア＋state encoder
+    │   ├── inference.rs      # PolicyValue trait（onnx feature で ort 推論 / 既定は Uniform）
+    │   ├── mcts.rs           # negamax PUCT MCTS（policyValueMctsAi.js の移植）
+    │   └── bin/{selfplay.rs, parity_check.rs}  # 自己対戦→JSONL / パリティ突き合わせ
+    └── tests/parity.rs        # パリティ検証（npm run native:test）
 ```
 
 ## データ流（ネイティブ）
@@ -61,23 +66,31 @@ JSONL のスキーマは `generate_dataset.mjs` と同一（`encoded_state`, `le
 
 ## ビルドとステータス
 
-> ⚠️ このリポジトリを生成した環境には Rust ツールチェーンが無いため、crate は**未コンパイル**で同梱されている。ローカルで最初にやること:
+> ⚠️ この crate は **Rust ツールチェーンが無い環境で作成された**ため未コンパイル。決定的コア＋ state encoder に加え、**NN 推論（`inference.rs`, onnx feature）と negamax PUCT MCTS（`mcts.rs`）まで実装済み**だが、ローカルでのビルド/検証が未了。最初にやること:
+
+```bash
+npm run parity:golden       # ゴールデン基準を最新化（任意。生成物は同梱済み）
+npm run native:test         # ← まず golden.json とのパリティを検証（最重要）
+npm run native:selfplay -- --games 100 --out games.jsonl --seed 1
+```
+
+NN 推論つき MCTS 自己対戦は `onnx` feature が必要（onnxruntime をリンク）:
 
 ```bash
 cd training/native/blokus-selfplay
-cargo test          # ← まず golden.json とのパリティを検証（最重要）
-cargo run --bin parity_check
-cargo run --release --bin selfplay -- --games 100 --out games.jsonl --seed 1
+cargo build --features onnx
+cargo run --release --features onnx --bin selfplay -- --policy mcts \
+  --model ../../../apps/web/public/models/blokus_policy_value.onnx --games 50 --sims 200
 ```
 
-`cargo test` が緑になるまでは、ネイティブ出力を学習に使わないこと。
+**`npm run native:test`（パリティ）が緑になるまでは、ネイティブ出力を学習に使わないこと**（[AGENTS.md](../AGENTS.md) の Do-NOT）。crate API・JSONL スキーマ・全 CLI フラグは [../training/native/blokus-selfplay/README.md](../training/native/blokus-selfplay/README.md)。
 
 ## ロードマップ（段階導入）
 
-1. **コア＋パリティ**（本土台）: board/rules/encoder/action/scoring を移植し `cargo test` で JS/Python と完全一致。自己対戦は random-legal で JSONL を出力。
-2. **NN 推論**: `ort`（onnxruntime）か `tract` で `blokus_policy_value.onnx` を読み込み、policy/value を取得。
-3. **PUCT MCTS（negamax）**: JS の `policyValueMctsAi.js` と同じ規約（手番視点・ply ごと符号反転・Dirichlet root noise・visit 温度サンプリング）を Rust で実装し、visit 分布を policy 教師として JSONL に出力。
-4. **置き換え**: `run_distributed_selfplay` のワーカーをネイティブバイナリに差し替え可能にする（同じ JSONL 出力・同じ CLI 互換）。Node 経路は対局 UI/検証用に残す。
-5. **並列化**: rayon 等でマルチコア自己対戦、（任意で）GPU 推論バッチ。
+1. ✅ **コア＋パリティ**: board/rules/encoder/action/scoring を移植し、golden.json と完全一致する `tests/parity.rs`。自己対戦は random-legal でも JSONL を出力。（**要 `npm run native:test` 検証**）
+2. ✅ **NN 推論**: `ort`（onnxruntime）で `blokus_policy_value.onnx` を読み policy/value を取得（`onnx` feature、未指定時は Uniform にフォールバック）。（**要 `cargo build --features onnx` 検証**）
+3. ✅ **PUCT MCTS（negamax）**: `policyValueMctsAi.js` と同じ規約（手番視点・ply ごと符号反転・Dirichlet root noise・visit 温度サンプリング）を実装し、visit 分布を policy 教師として JSONL に出力。
+4. ⏳ **置き換え**: `run_distributed_selfplay` のワーカーをネイティブバイナリに差し替え可能にする（同じ JSONL 出力・同じ CLI 互換）。Node 経路は対局 UI/検証用に残す。
+5. ⏳ **並列化**: rayon 等でマルチコア自己対戦、（任意で）GPU 推論バッチ。
 
-各段階で `parity:golden` を再生成して基準を最新化し、`cargo test` を回す。
+各段階で `npm run parity:golden` を再生成して基準を最新化し、`npm run native:test` を回す。

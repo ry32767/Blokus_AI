@@ -74,6 +74,8 @@ active best model で distributed self-play（探索 ON）
 
 CLI 配線は 4 層（`run_alphazero_loop` → `run_distributed_selfplay` → `run_selfplay_worker` → `generate_dataset`）。探索フラグ（`--root-dirichlet-weight` 等）と net サイズはこの経路で末端の実行体まで届く。
 
+本格学習の入口は `npm run train:full`（`run_full_training.mjs`）で、Phase 1（expert_plus warm-up → best-0 bootstrap）→ Phase 2（master 自己対戦＋SPRT）を上記ループに対して回す。手順は [TRAINING_WORKFLOW.md](TRAINING_WORKFLOW.md)、全オプションは [TRAINING_OPTIONS.md](TRAINING_OPTIONS.md)。
+
 ## 触るときの注意
 
 - `training/` のソースは相対 import 深度と `package.json` / `scripts/test.mjs` のパス直書きに強く依存。移動はクラスタ単位で、全パスを直して `npm run verify`。

@@ -15,6 +15,10 @@ the neural net just like the JS engine.
 > deterministic core (`tests/parity.rs`) plus the MCTS invariants in
 > `src/mcts.rs` (`UniformPolicyValue`).
 
+> Design rationale, the parity contract, and the staged roadmap live in
+> [../../../docs/NATIVE_SELFPLAY.md](../../../docs/NATIVE_SELFPLAY.md). This README is the
+> crate-local API/usage reference.
+
 ## What it is
 
 - `src/lib.rs` — public API mirroring the JS core (`packages/core/src/*.js`):
@@ -79,9 +83,15 @@ Canonical serialisations (must match `gen_golden.mjs`):
 ## Build / test
 
 This crate was **authored without a local Rust toolchain**, so it has not been compiled
-or run here. **The first step is to validate parity:**
+or run here. **The first step is to validate parity** — from the repo root via the npm
+wrappers, or with `cargo` directly inside this crate:
 
 ```bash
+# from the repo root:
+npm run native:test                         # = cargo test (tests/parity.rs against golden.json)
+npm run native:selfplay -- --games 10 --out games.jsonl --seed 1
+
+# or directly inside the crate:
 cd training/native/blokus-selfplay
 cargo test                                  # runs tests/parity.rs against golden.json
 cargo run --bin parity_check                # same checks, prints PASS/FAIL per item

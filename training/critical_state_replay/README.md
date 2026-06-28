@@ -16,3 +16,9 @@ Each output record contains:
 - `best_action`
 - `blunder_score`
 - compatibility fields for the existing policy-value trainer
+
+The full record schema, selection/replay rules, and acceptance criteria are the
+**contract in [../../docs/spec.md](../../docs/spec.md)**. All command flags are in
+[../../docs/TRAINING_OPTIONS.md](../../docs/TRAINING_OPTIONS.md); where this fits in the
+overall loop is in [../../docs/TRAINING_WORKFLOW.md](../../docs/TRAINING_WORKFLOW.md).
+A minimal end-to-end check is `npm run smoke:critical`.

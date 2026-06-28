@@ -54,7 +54,7 @@
 - ルート `AGENTS.md` が未記入の React/Vite テンプレ → 本プロジェクト用に全面刷新。
 - プロジェクト用 `CLAUDE.md` 不在（ワークスペースは GeoSection 用）→ 追加。
 - 開始マス/スコア式が未文書化 → README・spec に明記。
-- 設計ドキュメントを `docs/` に集約、`docs/ARCHITECTURE.md` 追加。`IMPLEMENTATION_PLAN` の「未実装」誤記（Critical Replay は実装済み）を修正。
+- 設計・学習ドキュメントを `docs/` に集約（ARCHITECTURE / TRAINING_WORKFLOW / TRAINING_OPTIONS / NATIVE_SELFPLAY / spec）。重複・陳腐化した旧ドキュメント（TRAINING_RUNBOOK / IMPLEMENTATION_PLAN / DEPLOYMENT_NOTE）は統合・退役し、README=人間向け / AGENTS=エージェント正典 / CLAUDE=薄い に整理。
 - `training/.scratch/` 等を `.gitignore` に追加。
 
 ### 検証で否定された主張（対応不要）

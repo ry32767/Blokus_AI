@@ -328,8 +328,10 @@ Policy-Value model を ONNX にします。
 | option | default | 説明 |
 | --- | ---: | --- |
 | `--checkpoint` | required | `policy_value_latest.pt` など。 |
-| `--out` | `apps/web/public/models/blokus_policy.onnx` | 出力 ONNX path。通常は明示指定してください。 |
+| `--out` | `apps/web/public/models/blokus_policy.onnx` | 出力 ONNX path。 |
 | `--model-kind` | `policy_value` | script 側で指定済み。 |
+
+> ⚠️ **`--out` は必ず明示してください。** 既定値は policy 用の `blokus_policy.onnx` のため、省略すると policy-value モデルを Learned 用モデルの path に書き出してしまいます。公開モデルへ反映するなら `--out apps/web/public/models/blokus_policy_value.onnx`、候補評価なら `--out training/reports/candidate.onnx` のように指定します。
 
 例:
 
@@ -535,6 +537,50 @@ Teacher move sampling example:
 ```bash
 node training/run_alphazero_loop.mjs -- --iterations 3 --workers 16 --games 320 --sample-size 32768 --epochs 5 --evaluation-games 64 --arena-parallel 16 --selfplay-ai expert_plus --selfplay-opponent expert_plus --evaluation-opponent expert_plus --move-temperature 1.2 --move-top-k 12 --move-sampling-plies 20 --move-candidate-pool 64
 ```
+
+## 本格学習 (train:full)
+
+### `npm run train:full`
+
+2 フェーズ（Phase 1 コールドスタート warm-up → Phase 2 master 自己対戦＋SPRT）を 1 つの registry / replay buffer / report に対して回す入口。内部で `alphazero:loop` を呼びます。手順は [TRAINING_WORKFLOW.md](TRAINING_WORKFLOW.md)。
+
+| option | default | 説明 |
+| --- | ---: | --- |
+| `--smoke` | off | 全経路の小規模ドライラン（数分・CPU）。出力は `training/.scratch/full-smoke/`。 |
+| `--phase1` | off | Phase 1 のみ実行（warm-up → best-0 bootstrap）。最初に一度だけ。 |
+| `--phase2` | off | Phase 2 のみ実行（best から master 自己対戦＋SPRT、内部で `--resume`）。中断したら同じコマンドで再開。 |
+| `--resume` | off | 一括ラン（フラグ無し）を Phase 2 から続きで。 |
+| `--cpu` | off | CPU に固定。 |
+| `--net-size` | `large` | `small` / `medium` / `large`。 |
+| `--warmup-iterations` | `2` | Phase 1 の反復数。 |
+| `--iterations` | `30` | Phase 2 の反復数。 |
+| `--workers` / `--games` | `4` / `200` | 自己対戦の並列数 / 反復ごとの games。 |
+| `--teacher-ms` / `--epochs` | `300` / `4` | 思考時間 ms / 学習 epoch。 |
+| `--sample-size` / `--batch-size` | `8192` / `4096` | replay sample 数 / batch size。 |
+| `--evaluation-games` | `120` | 昇格評価の局数。 |
+| `--base-dir` | `training/runs/full` | registry / replay buffer / report の置き場所。 |
+
+`--phase1` と `--phase2` の同時指定はエラー。`--smoke` 指定時は小さな既定値に置き換わります。
+
+## 観戦 (view:selfplay)
+
+### `npm run view:selfplay`
+
+14×14 盤面をターミナルに描画し、自己対戦を 1 手ずつ確認します。学習メトリクスの要約表示にも使えます。
+
+| option | default | 説明 |
+| --- | ---: | --- |
+| `--black-ai` / `--white-ai` | `master` / `expert` | 対戦させる AI。 |
+| `--black-model` / `--white-model` | none | `learned` / `master` のときの ONNX。 |
+| `--teacher-ms` | `400` | 各手の思考時間 ms。 |
+| `--delay-ms` | `350` | 1 手ごとの描画間隔 ms（`0` で待たない）。 |
+| `--max-moves` | `200` | 1 局の最大手数（表示かつライブ対局のハード上限）。 |
+| `--replay` | none | 保存した棋譜 JSON を再生。 |
+| `--summary` | none | `train_summary.json` を読み、loss/accuracy 推移を要約表示。 |
+
+## ネイティブ自己対戦 (native)
+
+Rust エンジンの CLI フラグは [NATIVE_SELFPLAY.md](NATIVE_SELFPLAY.md) と `training/native/blokus-selfplay/README.md`。npm ラッパは `parity:golden`（ゴールデン基準生成）/ `native:test`（パリティ検証）/ `native:selfplay`（自己対戦）。
 
 ## Model Registry
 

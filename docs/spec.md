@@ -1,8 +1,11 @@
 # BlokusAI Duo 仕様書
 
-- バージョン: 0.4.0-draft
-- 更新日: 2026-06-08
-- 対象: GitHub Pages で公開する 2 人対戦 Blokus Duo AI アプリ
+- バージョン: 0.5.0
+- 更新日: 2026-06-26
+- 対象: 公式 Blokus Duo AI アプリと自己対戦・学習パイプライン
+- 関連: 人間向け概要 [README.md](../README.md) / 作業規約 [AGENTS.md](../AGENTS.md) / 設計 [ARCHITECTURE.md](ARCHITECTURE.md) / 評価 [EVALUATION.md](EVALUATION.md) / 学習手順 [TRAINING_WORKFLOW.md](TRAINING_WORKFLOW.md)
+
+このドキュメントは主に **Critical State Replay（重要局面の分岐再生による高密度学習データ生成）の契約・dataset 形式・受け入れ条件**を定義する。ゲームルール・action 符号化・state encoder も併記するが、**正典はコード**（`packages/core/src/*.js` / `training/blokus_shared.py`）と [ARCHITECTURE.md](ARCHITECTURE.md) であり、本書と食い違う場合はコードを優先する。コマンドの全オプションは [TRAINING_OPTIONS.md](TRAINING_OPTIONS.md)。
 
 ---
 
@@ -28,7 +31,7 @@ AI は大きく 2 系統を扱う。
 - Phase 3: Replay buffer / distributed self-play / model registry / Elo gating
 - Phase 4: Critical State Replay を含む高密度学習データ生成
 
-本仕様では、既存の self-play / policy-value 学習基盤に加え、**Critical State Replay** を正式な学習データ作成方式として追加定義する。
+本仕様では、self-play / policy-value 学習基盤に加え、**Critical State Replay** を学習データ作成方式として定義する（`training/critical_state_replay/` に実装済み）。
 
 ---
 
@@ -622,18 +625,16 @@ npm run generate:critical-replay -- \
   --playouts-per-action 4 \
   --teacher expert_with_noise
 
-python training/train_policy_value.py \
-  --dataset training/dataset/mixed_config.yaml \
+npm run train:policy-value -- \
+  --dataset training/configs/mixed-learned-critical.json \
   --epochs 1 \
-  --batch-size 512 \
-  --device cuda \
-  --amp
+  --batch-size 512
 ```
 
 注:
 
-- 上記の `generate:trajectory` / `generate:critical-replay` は本仕様で追加されたコマンド例であり、既存実装に未着手の部分を含む
-- 既存の `generate:dataset`, `distributed:selfplay`, `alphazero:loop` と並行して育てる
+- `generate:trajectory` / `generate:critical-replay` / `train:policy-value` は実装済み（`training/critical_state_replay/` ほか）。最小確認は `npm run smoke:critical`。
+- `generate:dataset` / `distributed:selfplay` / `alphazero:loop` と組み合わせて使う。GPU は既定で使用、CPU 固定は `--cpu`。コマンドの全オプションは [TRAINING_OPTIONS.md](TRAINING_OPTIONS.md)。
 
 ---
 

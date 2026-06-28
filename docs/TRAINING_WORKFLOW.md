@@ -1,10 +1,23 @@
 # 学習ワークフロー（人が見てわかる版）
 
-「何を・どの順で・どこに出力して・どう確認するか」を一枚で追えるようにしたものです。
+「何を・どの順で・どこに出力して・どう確認するか」を一枚で追えるようにしたものです（手順の正典）。各コマンドの**全オプションは [TRAINING_OPTIONS.md](TRAINING_OPTIONS.md)**（フラグの正典）にあり、ここでは再掲しません。
 - コマンドの全オプション → [TRAINING_OPTIONS.md](TRAINING_OPTIONS.md)
-- 手順の詳細 → [TRAINING_RUNBOOK.md](TRAINING_RUNBOOK.md)
 - 全体設計 → [ARCHITECTURE.md](ARCHITECTURE.md)
 - 現状評価とロードマップ → [EVALUATION.md](EVALUATION.md)
+- Critical State Replay の契約 → [spec.md](spec.md)
+
+---
+
+## 初回セットアップ
+
+```bash
+npm install
+npm run python:install:gpu   # GPU 版 PyTorch / ONNX。CPU だけなら python:install:cpu
+npm run python:check         # torch / cuda_available / onnx を確認
+npm test                     # まず全スイートが緑であること
+```
+
+Windows PowerShell で `npm.ps1` が止まる場合は `npm.cmd` を使ってください。
 
 ---
 
@@ -120,7 +133,7 @@ BLOKUS_ORT_BACKEND=node   # 強制ネイティブ（既定 auto は node→web �
 BLOKUS_ORT_BACKEND=web    # WASM 強制
 ```
 
-> さらに上のスループットは Rust ネイティブエンジン（[NATIVE_SELFPLAY.md](NATIVE_SELFPLAY.md)）。ローカルで `cargo test` を通せば解禁。
+> さらに上のスループットは Rust ネイティブエンジン（[NATIVE_SELFPLAY.md](NATIVE_SELFPLAY.md)）。ローカルで `npm run native:test`（パリティ）を通せば解禁。
 
 ## クイックスタート
 
@@ -143,6 +156,30 @@ npm run alphazero:loop -- --iterations N --workers 8 --games 200 \
   --evaluation-games 200 --root-dirichlet-weight 0.25 --mcts-sampling-temperature 1.0
 ```
 ※ 計算量が大きいので GPU 前提。詳細フラグは [TRAINING_OPTIONS.md](TRAINING_OPTIONS.md)。
+
+---
+
+## AI の役割分担・候補評価・注意
+
+**自己対戦 AI の役割分担:**
+
+- `learned`: 高速 self-play で局面分布を増やす。
+- `expert` / `expert_plus`: 安定した教師・fallback として使う。
+- `master`: 高品質だが重い。全局面の大量生成より、重要局面の再評価・Critical State Replay・candidate 評価に寄せる。
+
+**候補モデルのアリーナ評価:**
+
+```bash
+npm run export:onnx:pv -- --checkpoint <…/policy_value_latest.pt> --out training/reports/candidate.onnx
+npm run arena:ai -- --games 100 --alpha-ai master --alpha-model training/reports/candidate.onnx --beta-ai expert_plus --beta-ms 300 --out training/reports/candidate-vs-expert-plus.json
+```
+
+見る指標: wins / losses / draws、`averageMargin`、illegal move が出ていないこと、fallback / timeout が増えていないこと。
+
+**注意:**
+
+- `BLOKUS_PYTHON` を指定するとその Python を優先します。未指定時は `.venv` → 通常の `python` の順で探します。
+- Critical State Replay の混合比率は最初 20–30% 程度が扱いやすいです（契約は [spec.md](spec.md)、dataset mix の書式は [TRAINING_OPTIONS.md](TRAINING_OPTIONS.md) の Dataset Mix Config）。`learned` self-play だけで回し続けると弱点を増幅しやすいので、Expert / Master Critical Replay を混ぜてください。
 
 ---
 
