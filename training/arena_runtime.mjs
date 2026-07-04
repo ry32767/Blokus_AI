@@ -70,6 +70,11 @@ export async function runArena(config = {}) {
   const swapColors = config.swapColors !== false;
   const alphaName = config.alpha?.name ?? "alpha";
   const betaName = config.beta?.name ?? "beta";
+  if (alphaName === betaName) {
+    // Records are keyed by name; identical names would collapse both
+    // contestants into one entry and corrupt the W/L accounting.
+    throw new Error(`Arena contestants must have distinct names (both are "${alphaName}").`);
+  }
   const alphaSpec = normalizeTrainingAiSpec(config.alpha?.spec ?? config.alpha ?? {});
   const betaSpec = normalizeTrainingAiSpec(config.beta?.spec ?? config.beta ?? {});
   const results = [];

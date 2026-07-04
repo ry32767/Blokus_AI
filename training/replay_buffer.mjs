@@ -1,5 +1,5 @@
-import { copyFile, createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, createReadStream, createWriteStream, existsSync } from "node:fs";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
 import readline from "node:readline";
 import { createGunzip, createGzip } from "node:zlib";
@@ -108,20 +108,40 @@ export async function ensureReplayBuffer(bufferDir) {
   const shardsDir = join(resolvedDir, "shards");
   const manifestPath = join(resolvedDir, "manifest.json");
   await mkdir(shardsDir, { recursive: true });
+  let raw = null;
   try {
-    const manifest = JSON.parse(await readFile(manifestPath, "utf-8"));
-    if (!manifest.version) manifest.version = 1;
-    return { bufferDir: resolvedDir, shardsDir, manifestPath, manifest };
-  } catch {
+    raw = await readFile(manifestPath, "utf-8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  if (raw === null) {
     const manifest = createEmptyManifest(resolvedDir);
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
     return { bufferDir: resolvedDir, shardsDir, manifestPath, manifest };
   }
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch (error) {
+    // A manifest that exists but cannot be parsed means accumulated shards
+    // would be silently orphaned (and later overwritten) if we recreated an
+    // empty one. Fail loudly instead.
+    throw new Error(
+      `Replay buffer manifest is corrupted: ${manifestPath} (${error.message}). `
+      + "Restore it from backup or rebuild it before continuing.",
+    );
+  }
+  if (!manifest.version) manifest.version = 1;
+  return { bufferDir: resolvedDir, shardsDir, manifestPath, manifest };
 }
 
 async function saveManifest(context) {
   context.manifest.generatedAt = nowIso();
-  await writeFile(context.manifestPath, `${JSON.stringify(context.manifest, null, 2)}\n`, "utf-8");
+  // Write-then-rename so a crash mid-write can never leave a truncated
+  // manifest behind.
+  const tempPath = `${context.manifestPath}.tmp-${process.pid}`;
+  await writeFile(tempPath, `${JSON.stringify(context.manifest, null, 2)}\n`, "utf-8");
+  await rename(tempPath, context.manifestPath);
 }
 
 async function summarizeSamples(path) {
@@ -144,9 +164,24 @@ async function summarizeSamples(path) {
 
 export async function addShardToReplayBuffer(bufferDir, sourcePath, options = {}) {
   const context = await ensureReplayBuffer(bufferDir);
-  const shardId = options.shardId ?? `shard-${String(context.manifest.nextShardIndex).padStart(6, "0")}`;
   const compression = shardCompressionFromOptions(options);
-  const destinationPath = join(context.shardsDir, shardFileName(shardId, compression));
+  let shardId = options.shardId;
+  let destinationPath;
+  if (shardId) {
+    destinationPath = join(context.shardsDir, shardFileName(shardId, compression));
+  } else {
+    // Never overwrite an existing shard file: with concurrent writers (or a
+    // manifest that lags the shards directory) the derived index can collide
+    // with a shard that already holds real game data.
+    do {
+      shardId = `shard-${String(context.manifest.nextShardIndex).padStart(6, "0")}`;
+      destinationPath = join(context.shardsDir, shardFileName(shardId, compression));
+      if (existsSync(destinationPath)) {
+        context.manifest.nextShardIndex += 1;
+        destinationPath = null;
+      }
+    } while (!destinationPath);
+  }
   const summary = await summarizeSamples(sourcePath);
   const sampleCount = options.sampleCount ?? summary.sampleCount;
   const gameCount = options.gameCount ?? null;

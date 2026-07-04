@@ -31,7 +31,10 @@ function alphaBetaSearch(state, depth, alpha, beta, rootPlayer, startedAt, timeL
 
   const hash = hashState(state);
   const cached = table.get(hash);
-  if (cached && cached.depth >= depth) {
+  // Only consume entries produced by this search kind for the same root player:
+  // exact-solver entries are on the final-score-diff scale and mcts/nn entries
+  // are normalized — mixing scales (or a flipped root perspective) misorders moves.
+  if (cached && cached.kind === "ab_heuristic" && cached.rootPlayer === rootPlayer && cached.depth >= depth) {
     counters.tableHits += 1;
     if (cached.bound === "exact") return { value: cached.value, bestMove: cached.bestMove };
     if (cached.bound === "lower") alpha = Math.max(alpha, cached.value);
@@ -79,6 +82,8 @@ function alphaBetaSearch(state, depth, alpha, beta, rootPlayer, startedAt, timeL
 
   table.set({
     hash,
+    kind: "ab_heuristic",
+    rootPlayer,
     depth,
     value: bestValue,
     bound,
@@ -173,9 +178,14 @@ function exactSearch(state, alpha, beta, rootPlayer, startedAt, timeLimitMs, tab
 
   const hash = hashState(state);
   const cached = table.get(hash);
-  if (cached && cached.exactSolved) {
+  if (cached && cached.kind === "exact_search" && cached.rootPlayer === rootPlayer) {
     counters.tableHits += 1;
-    return { value: cached.value, bestMove: cached.bestMove ?? null };
+    if (cached.bound === "exact") return { value: cached.value, bestMove: cached.bestMove ?? null };
+    // Cutoff nodes only store a bound on the true value; use it to narrow the
+    // window, never as the exact answer.
+    if (cached.bound === "lower") alpha = Math.max(alpha, cached.value);
+    if (cached.bound === "upper") beta = Math.min(beta, cached.value);
+    if (alpha >= beta) return { value: cached.value, bestMove: cached.bestMove ?? null };
   }
 
   if (state.status !== "playing") {
@@ -186,6 +196,8 @@ function exactSearch(state, alpha, beta, rootPlayer, startedAt, timeLimitMs, tab
   const maximizing = state.currentPlayer === rootPlayer;
   let bestMove = moves[0] ?? null;
   let bestValue = maximizing ? -Infinity : Infinity;
+  const originalAlpha = alpha;
+  const originalBeta = beta;
 
   for (const move of moves) {
     counters.nodes += 1;
@@ -210,13 +222,21 @@ function exactSearch(state, alpha, beta, rootPlayer, startedAt, timeLimitMs, tab
     if (alpha >= beta) break;
   }
 
+  // A value inside the original window is the true minimax value; a value at
+  // or outside a bound only proves a lower/upper bound (alpha-beta cutoff).
+  let bound = "exact";
+  if (bestValue <= originalAlpha) bound = "upper";
+  else if (bestValue >= originalBeta) bound = "lower";
+
   table.set({
     hash,
+    kind: "exact_search",
+    rootPlayer,
     depth: Number.MAX_SAFE_INTEGER,
     value: bestValue,
-    bound: "exact",
+    bound,
     bestMove,
-    exactSolved: true,
+    exactSolved: bound === "exact",
   });
 
   return { value: bestValue, bestMove };

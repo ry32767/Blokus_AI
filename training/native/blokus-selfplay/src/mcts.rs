@@ -190,13 +190,19 @@ fn normalize_value(score_diff: i32) -> f64 {
     (score_diff as f64 / 89.0).clamp(-1.0, 1.0)
 }
 
-/// Terminal value from the perspective of the player to move at `state`.
+/// Terminal leaf value in the negamax convention. `advance_turn_or_finish`
+/// does not toggle `current_player` when the game ends, so at a terminal state
+/// `current_player` is the player who made the final move — the same side to
+/// move at the parent node. Backup negates once per ply, so the leaf must
+/// report the value from the opponent-of-mover perspective (the notional side
+/// to move at the leaf) for the parent to read the score correctly.
+/// Mirrors `finalValueForToMove` in the JS MCTS engines.
 fn final_value_for_to_move(state: &GameState) -> f64 {
     let [score_a, score_b] = score_state(state);
     let diff = if state.current_player == 0 {
-        score_a - score_b
-    } else {
         score_b - score_a
+    } else {
+        score_a - score_b
     };
     normalize_value(diff)
 }
@@ -275,14 +281,14 @@ fn hash_state(state: &GameState) -> String {
 }
 
 /// Rank legal moves by policy logits and convert to softmax priors over the kept
-/// candidates. Mirrors `rankByPolicy` + the `.slice(0, candidateLimit)` in
-/// `expandLeaf`:
+/// candidates. Mirrors `rankByPolicy` + `renormalizePriors(...slice(0, candidateLimit))`
+/// in `expandLeaf`:
 ///   1. score each move by `logits[encodeAction(move)]`,
 ///   2. sort by score desc (seeded random tie-break),
 ///   3. softmax over the FULL sorted list (max-subtracted for stability),
-///   4. truncate to `candidate_limit`.
-/// Note the JS softmaxes over the full list then slices; we do the same so kept
-/// priors are identical to the JS for the same logits and tie draws.
+///   4. truncate to `candidate_limit`,
+///   5. renormalize the kept priors so they sum to 1 (keeps the PUCT
+///      exploration term and Dirichlet mixture on the intended scale).
 fn rank_by_policy(
     logits: &[f32],
     moves: &[Move],
@@ -317,12 +323,25 @@ fn rank_by_policy(
         }
     };
 
-    scored
+    let kept: Vec<(Move, usize, f64)> = scored
         .into_iter()
         .zip(weights)
         .map(|((mv, action, _score, _tie), w)| (mv, action, w / total))
         .take(candidate_limit)
-        .collect()
+        .collect();
+
+    // Renormalize after truncation (mirrors JS `renormalizePriors`).
+    let kept_total: f64 = kept.iter().map(|e| e.2).sum();
+    if kept_total > 0.0 {
+        kept.into_iter()
+            .map(|(mv, action, p)| (mv, action, p / kept_total))
+            .collect()
+    } else {
+        let uniform = if kept.is_empty() { 0.0 } else { 1.0 / kept.len() as f64 };
+        kept.into_iter()
+            .map(|(mv, action, _)| (mv, action, uniform))
+            .collect()
+    }
 }
 
 // --- Seeded sampling helpers (Dirichlet root noise + temperature). Ported from
@@ -563,6 +582,7 @@ impl<'a> Mcts<'a> {
         let _ = current_player; // value is already in to-move perspective.
 
         let (logits, value) = self.nn.infer(&tensor);
+        let value = value as f64;
         debug_assert_eq!(
             logits.len(),
             crate::action::action_size(),
@@ -827,7 +847,7 @@ mod tests {
         for w in result.policy_target_visits.windows(2) {
             assert!(w[0] >= w[1], "visits must be sorted descending");
         }
-        assert_eq!(result.total_visits, result.policy_target_visits.iter().sum());
+        assert_eq!(result.total_visits, result.policy_target_visits.iter().sum::<u64>());
     }
 
     #[test]

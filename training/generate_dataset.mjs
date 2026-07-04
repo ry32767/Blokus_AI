@@ -181,7 +181,11 @@ export async function playTrainingGame(config) {
   });
   let state = createInitialState(config.startPolicy);
   const samples = [];
-  const includeVisitTargets = config.policyTargetSource === "visit" || config.policyTargetSource === "auto";
+  // Default matches the CLI ("auto"): programmatic callers that omit
+  // policyTargetSource must not silently degrade MCTS visit distributions
+  // to one-hot targets.
+  const policyTargetSource = config.policyTargetSource ?? "auto";
+  const includeVisitTargets = policyTargetSource === "visit" || policyTargetSource === "auto";
 
   while (state.status === "playing") {
     const currentPlayer = state.currentPlayer;
@@ -191,8 +195,10 @@ export async function playTrainingGame(config) {
     const selectedMove = sampledDecision.move;
     const legalActions = legalMoves.map(encodeAction);
     const stats = decision.stats ?? {};
+    // The policy target must always reflect the teacher's search output, even
+    // when temperature resampling picks a different move to PLAY: training the
+    // policy net toward the exploration move would teach it the noise itself.
     const useVisitTargets = includeVisitTargets
-      && !sampledDecision.sampled
       && Array.isArray(stats.policyTargetActions)
       && Array.isArray(stats.policyTargetProbs)
       && stats.policyTargetActions.length > 0
@@ -207,7 +213,7 @@ export async function playTrainingGame(config) {
       selected_action: selectedAction,
       expert_selected_action: teacherAction,
       final_score_diff: 0,
-      policy_target_actions: useVisitTargets ? stats.policyTargetActions : [selectedAction],
+      policy_target_actions: useVisitTargets ? stats.policyTargetActions : [teacherAction],
       policy_target_probs: useVisitTargets ? stats.policyTargetProbs : [1],
       policy_target_visits: useVisitTargets ? (stats.policyTargetVisits ?? null) : [1],
       policy_target_total_visits: useVisitTargets ? (stats.policyTargetTotalVisits ?? null) : 1,

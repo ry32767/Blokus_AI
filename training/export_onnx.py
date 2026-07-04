@@ -22,9 +22,15 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--out", default=str(ROOT.parent / "apps" / "web" / "public" / "models" / "blokus_policy.onnx"))
+    parser.add_argument("--out", default=None)
     parser.add_argument("--model-kind", choices=["policy", "policy_value"], default="policy")
     args = parser.parse_args()
+
+    if args.out is None:
+        # Default per model kind: a policy_value export must never clobber the
+        # policy-only model used by the "learned" difficulty (and vice versa).
+        model_file = "blokus_policy.onnx" if args.model_kind == "policy" else "blokus_policy_value.onnx"
+        args.out = str(ROOT.parent / "apps" / "web" / "public" / "models" / model_file)
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
     # Reconstruct with the trunk size recorded at training time; older checkpoints

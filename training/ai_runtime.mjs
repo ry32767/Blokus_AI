@@ -84,6 +84,11 @@ export function normalizeTrainingAiSpec(spec = {}) {
     timeLimitMs,
     maxThinkingMs: timeLimitMs,
     modelPath: normalizeModelPath(spec.modelPath),
+    // Training/arena runs of model-backed actors must hard-fail when the model
+    // cannot actually be used: a silent fall-back to the heuristic engine
+    // mislabels self-play data and lets the promotion gate measure the wrong
+    // player. Callers can still opt out explicitly (failOnFallback: false).
+    failOnFallback: spec.failOnFallback ?? (difficulty === "learned" || difficulty === "master"),
     ...spec,
     difficulty,
     engine: difficulty,
@@ -93,22 +98,28 @@ export function normalizeTrainingAiSpec(spec = {}) {
   };
 }
 
-async function loadLearnedSession(modelPath) {
-  const resolvedPath = normalizeModelPath(modelPath) ?? defaultModelPath;
+async function loadCachedSession(resolvedPath) {
   if (!sessionCache.has(resolvedPath)) {
     const ort = await loadOrt();
-    sessionCache.set(resolvedPath, ort.InferenceSession.create(resolvedPath, sessionOptions()));
+    const sessionPromise = ort.InferenceSession.create(resolvedPath, sessionOptions());
+    // Evict on rejection: a cached rejected promise would poison every later
+    // attempt for the process lifetime.
+    sessionPromise.catch(() => {
+      if (sessionCache.get(resolvedPath) === sessionPromise) sessionCache.delete(resolvedPath);
+    });
+    sessionCache.set(resolvedPath, sessionPromise);
   }
   return sessionCache.get(resolvedPath);
 }
 
+async function loadLearnedSession(modelPath) {
+  return loadCachedSession(normalizeModelPath(modelPath) ?? defaultModelPath);
+}
+
 async function loadPolicyValueSession(modelPath) {
-  const resolvedPath = normalizeModelPath(modelPath) ?? join(root, "apps", "web", "public", "models", "blokus_policy_value.onnx");
-  if (!sessionCache.has(resolvedPath)) {
-    const ort = await loadOrt();
-    sessionCache.set(resolvedPath, ort.InferenceSession.create(resolvedPath, sessionOptions()));
-  }
-  return sessionCache.get(resolvedPath);
+  return loadCachedSession(
+    normalizeModelPath(modelPath) ?? join(root, "apps", "web", "public", "models", "blokus_policy_value.onnx"),
+  );
 }
 
 export async function decideTrainingMove(state, spec = {}) {

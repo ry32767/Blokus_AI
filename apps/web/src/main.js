@@ -1,6 +1,7 @@
 import {
   BOARD_SIZE,
   EMPTY,
+  PIECE_IDS,
   PLAYERS,
   START_POINTS,
   applyMove,
@@ -17,10 +18,15 @@ import {
 import { decideFallbackMove, normalizeAiConfig } from "./ai/difficulty.js";
 
 const app = document.querySelector("#app");
-const settingsKey = "blokus-ai-duo-settings-v3";
+// v4: drop the persisted `simulations` cap that silently limited search effort.
+const settingsKey = "blokus-ai-duo-settings-v4";
 const resultAnnouncementDurationMs = 3600;
 
 let gameState = createInitialState("chooseStart");
+// Monotonic generation counter. Bumped whenever the game context changes out
+// from under an in-flight AI think (new game, load, undo, mode change) so a
+// stale worker decision is never applied to a different game.
+let gameEpoch = 0;
 let undoStack = [];
 let selectedPieceId = "I1";
 let selectedOrientationIndex = 0;
@@ -34,6 +40,18 @@ let resultAnnouncementTimer = null;
 let statusMessage = "Ready.";
 let settings = loadSettings();
 let worker = createAiWorker();
+
+// All dynamic strings rendered through `app.innerHTML` must pass through this:
+// loaded game JSON (piece ids, start assignment, move history) is
+// user-controllable data.
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
 
 function isHumanVsHumanMode() {
   return settings.mode === "HUMAN_VS_HUMAN";
@@ -53,8 +71,8 @@ function loadSettings() {
     humanPlayer: 0,
     startPolicy: "chooseStart",
     aiConfig: [
-      { engine: "normal", maxThinkingMs: 900, simulations: 96 },
-      { engine: "normal", maxThinkingMs: 900, simulations: 96 },
+      { engine: "normal", maxThinkingMs: 900 },
+      { engine: "normal", maxThinkingMs: 900 },
     ],
     aiSpeed: 500,
   };
@@ -201,6 +219,7 @@ function isAiTurn() {
 
 function resetGame() {
   clearResultAnnouncement();
+  gameEpoch += 1;
   gameState = createInitialState(settings.startPolicy);
   undoStack = [];
   selectedPieceId = "I1";
@@ -217,7 +236,7 @@ function applyGameMove(move, thinkingMs, aiStats) {
   if (!isLegalMove(gameState, move)) {
     statusMessage = "Illegal move rejected.";
     render();
-    return;
+    return false;
   }
   undoStack.push(structuredClone(gameState));
   gameState = applyMove(gameState, move);
@@ -239,33 +258,27 @@ function applyGameMove(move, thinkingMs, aiStats) {
     statusMessage = `${currentPlayerLabel()} to move.`;
   }
   render();
+  return true;
 }
 
 function undo() {
   if (undoStack.length === 0 || thinking) return;
   clearResultAnnouncement();
+  gameEpoch += 1;
   gameState = undoStack.pop();
-  statusMessage = "Undone.";
-  render();
-}
-
-function skipTurn() {
-  if (!isHumanTurn() || gameState.status !== "playing" || thinking) return;
-  const skippedPlayer = gameState.currentPlayer;
-  undoStack.push(structuredClone(gameState));
-  gameState = {
-    ...gameState,
-    currentPlayer: skippedPlayer === 0 ? 1 : 0,
-    turn: gameState.turn + 1,
-    moveHistory: gameState.moveHistory.concat({
-      ply: gameState.turn + 1,
-      move: { kind: "skip", player: skippedPlayer },
-    }),
-  };
+  // In Human vs AI, keep popping until it is the human's turn again — otherwise
+  // the AI immediately replays the move that was just undone.
+  if (isHumanVsAiMode()) {
+    while (undoStack.length > 0 && !isHumanTurn()) {
+      gameState = undoStack.pop();
+    }
+  }
   hoverCell = null;
-  selectedPieceId = gameState.remainingPieces[gameState.currentPlayer][0] || selectedPieceId;
-  selectedOrientationIndex = 0;
-  statusMessage = `${PLAYERS[skippedPlayer].label} skipped. ${currentPlayerLabel()} to move.`;
+  if (!gameState.remainingPieces[gameState.currentPlayer].includes(selectedPieceId)) {
+    selectedPieceId = gameState.remainingPieces[gameState.currentPlayer][0] || selectedPieceId;
+    selectedOrientationIndex = 0;
+  }
+  statusMessage = "Undone.";
   render();
 }
 
@@ -313,18 +326,88 @@ async function copyGameJson() {
   render();
 }
 
+// Structural validation for pasted game JSON. Without this, a hostile or
+// corrupted payload becomes `gameState` verbatim and either breaks every
+// subsequent render or injects markup through the innerHTML templates.
+function validateLoadedState(state) {
+  if (!state || typeof state !== "object") return "state must be an object";
+  if (!Array.isArray(state.board) || state.board.length !== BOARD_SIZE * BOARD_SIZE) {
+    return "board must have 196 cells";
+  }
+  if (!state.board.every((cell) => cell === EMPTY || cell === 0 || cell === 1)) {
+    return "board contains invalid cell values";
+  }
+  if (state.currentPlayer !== 0 && state.currentPlayer !== 1) return "invalid currentPlayer";
+  if (state.status !== "playing" && state.status !== "finished") return "invalid status";
+  if (!Number.isInteger(state.turn) || state.turn < 0) return "invalid turn";
+  const validPieceList = (pieces) => Array.isArray(pieces) && pieces.every((id) => PIECE_IDS.includes(id));
+  for (const key of ["remainingPieces", "placedPieces"]) {
+    if (!Array.isArray(state[key]) || state[key].length !== 2 || !state[key].every(validPieceList)) {
+      return `invalid ${key}`;
+    }
+  }
+  if (!Array.isArray(state.startAssignment) || state.startAssignment.length !== 2
+    || !state.startAssignment.every((entry) => entry === null || entry === "A" || entry === "B")) {
+    return "invalid startAssignment";
+  }
+  if (!Array.isArray(state.moveHistory)) return "invalid moveHistory";
+  for (const record of state.moveHistory) {
+    const move = record?.move;
+    if (!move || (move.player !== 0 && move.player !== 1)) return "invalid moveHistory entry";
+    if (move.kind !== "pass" && move.kind !== "place") return "invalid move kind in history";
+    if (move.kind === "place") {
+      if (!PIECE_IDS.includes(move.pieceId)) return "invalid piece in history";
+      if (!Number.isInteger(move.x) || !Number.isInteger(move.y)
+        || move.x < 0 || move.x >= BOARD_SIZE || move.y < 0 || move.y >= BOARD_SIZE) {
+        return "invalid coordinates in history";
+      }
+    }
+  }
+  return null;
+}
+
 function loadGameJson() {
   const raw = window.prompt("Load Game JSON");
   if (!raw) return;
   try {
     const parsed = JSON.parse(raw);
-    gameState = parsed.state || parsed;
-    if (parsed.settings) settings = { ...settings, ...parsed.settings };
+    const nextState = parsed.state || parsed;
+    const problem = validateLoadedState(nextState);
+    if (problem) {
+      statusMessage = `Load failed: ${problem}.`;
+      render();
+      return;
+    }
+    gameEpoch += 1;
+    gameState = nextState;
+    if (parsed.settings && typeof parsed.settings === "object") {
+      const loaded = parsed.settings;
+      settings = {
+        ...settings,
+        ...(loaded.mode === "HUMAN_VS_HUMAN" || loaded.mode === "HUMAN_VS_AI" || loaded.mode === "AI_VS_AI"
+          ? { mode: loaded.mode }
+          : {}),
+        ...(loaded.humanPlayer === 0 || loaded.humanPlayer === 1 ? { humanPlayer: loaded.humanPlayer } : {}),
+        ...(loaded.startPolicy === "chooseStart" || loaded.startPolicy === "fixedStart"
+          ? { startPolicy: loaded.startPolicy }
+          : {}),
+        ...(Number.isFinite(loaded.aiSpeed) ? { aiSpeed: loaded.aiSpeed } : {}),
+        ...(Array.isArray(loaded.aiConfig) && loaded.aiConfig.length === 2
+          ? { aiConfig: loaded.aiConfig.map((entry) => normalizeAiConfig(entry ?? {})) }
+          : {}),
+      };
+    }
     undoStack = [];
+    if (!gameState.remainingPieces[gameState.currentPlayer].includes(selectedPieceId)) {
+      selectedPieceId = gameState.remainingPieces[gameState.currentPlayer][0] || "I1";
+      selectedOrientationIndex = 0;
+    }
     clearResultAnnouncement();
     statusMessage = "Game JSON loaded.";
-  } catch (error) {
-    statusMessage = `Load failed: ${error.message}`;
+  } catch {
+    // Never echo parser output: JSON.parse error messages quote the raw input,
+    // which would flow into innerHTML.
+    statusMessage = "Load failed: invalid JSON.";
   }
   render();
 }
@@ -353,18 +436,30 @@ function askWorker(state, config) {
   });
 }
 
-async function maybeStartAiTurn() {
-  if (thinking || !isAiTurn()) return;
+// `force` runs a single AI move even while paused (the Step button).
+async function maybeStartAiTurn(force = false) {
+  if (thinking || !(force || isAiTurn())) return;
   thinking = true;
   render(false);
+  const epoch = gameEpoch;
   const aiState = structuredClone(gameState);
   const config = settings.aiConfig[aiState.currentPlayer];
+  // A decision may only be applied to the exact game context it was computed
+  // for: same game generation, same ply, and the AI is still expected to move
+  // (guards against New Game / Load / Undo / mode changes mid-think).
+  const decisionStillValid = () => epoch === gameEpoch
+    && gameState.turn === aiState.turn
+    && gameState.currentPlayer === aiState.currentPlayer
+    && (force || isAiTurn());
   try {
     await new Promise((resolve) => setTimeout(resolve, Number(settings.aiSpeed)));
     const decision = await askWorker(aiState, config);
-    if (gameState.turn === aiState.turn && gameState.currentPlayer === aiState.currentPlayer) {
+    if (decisionStillValid()) {
       lastAiStats = decision.stats;
-      applyGameMove(decision.move, decision.stats.thinkingMs, decision.stats);
+      if (!applyGameMove(decision.move, decision.stats.thinkingMs, decision.stats)) {
+        aiHalted = true;
+        statusMessage = "AI halted: engine proposed an illegal move.";
+      }
     }
   } catch (error) {
     if ((error.message || "").includes("timed out")) {
@@ -375,7 +470,7 @@ async function maybeStartAiTurn() {
         maxThinkingMs: 250,
         shortlistLimit: 10,
       });
-      if (gameState.turn === aiState.turn && gameState.currentPlayer === aiState.currentPlayer) {
+      if (decisionStillValid()) {
         lastAiStats = {
           ...fallbackDecision.stats,
           difficulty: config.difficulty ?? config.engine ?? fallbackDecision.stats.difficulty,
@@ -385,12 +480,15 @@ async function maybeStartAiTurn() {
         applyGameMove(fallbackDecision.move, fallbackDecision.stats.thinkingMs, lastAiStats);
         statusMessage = "AI used fallback after worker timeout.";
       }
+      // Only a timeout indicates a stuck worker; recreate it. Other errors
+      // (e.g. one engine failing on one position) keep the worker — and its
+      // warmed ONNX sessions — alive.
+      worker?.terminate();
+      worker = createAiWorker();
     } else {
       statusMessage = `AI halted: ${error.message}`;
       aiHalted = true;
     }
-    worker?.terminate();
-    worker = createAiWorker();
   } finally {
     thinking = false;
     render();
@@ -453,11 +551,10 @@ function renderBoard() {
       <div class="board-actions">
         <button id="rotate-top" ${!isHumanTurn() ? "disabled" : ""}>Rotate</button>
         <button id="flip-top" ${!isHumanTurn() ? "disabled" : ""}>Flip</button>
-        <button id="skip-turn" ${!isHumanTurn() || thinking ? "disabled" : ""}>Skip</button>
         <button id="pass-top" ${!canPass || !isHumanTurn() ? "disabled" : ""}>Pass</button>
       </div>
       <div class="board-grid">${cells.join("")}</div>
-      <p class="rule-message">${previewResult?.reason || statusMessage}</p>
+      <p class="rule-message">${escapeHtml(previewResult?.reason || statusMessage)}</p>
       <p class="guide-message">Green dots show every place this piece can legally start. Hovering a cell shows the full footprint from that position.</p>
     </section>
   `;
@@ -480,7 +577,7 @@ function renderTray(player) {
       </div>
       <div class="player-subline">
         <span>${gameState.remainingPieces[player].length} pieces left</span>
-        <span>Start ${gameState.startAssignment[player] || "-"}</span>
+        <span>Start ${escapeHtml(gameState.startAssignment[player] || "-")}</span>
       </div>
       <div class="piece-tray">
         ${allPieces.map((pieceId) => {
@@ -489,13 +586,13 @@ function renderTray(player) {
           return `
             <button
               class="piece-button ${used ? "used" : ""} ${selected ? "selected" : ""}"
-              data-piece="${pieceId}"
+              data-piece="${escapeHtml(pieceId)}"
               data-player="${player}"
               ${used || player !== gameState.currentPlayer || !isHumanTurn() ? "disabled" : ""}
-              aria-label="${pieceId}"
+              aria-label="${escapeHtml(pieceId)}"
             >
               ${miniPieceSvg(pieceId)}
-              <span>${pieceId}</span>
+              <span>${escapeHtml(pieceId)}</span>
             </button>
           `;
         }).join("")}
@@ -608,7 +705,7 @@ function renderStats() {
       <h2>AI Stats</h2>
       ${stats ? `
         <dl>
-          ${entries.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}
+          ${entries.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}
         </dl>
       ` : `<p class="muted">${emptyMessage}</p>`}
     </section>
@@ -625,10 +722,8 @@ function renderLog() {
           const move = record.move;
           const body = move.kind === "pass"
             ? "pass"
-            : move.kind === "skip"
-              ? "skip"
-              : `${move.pieceId} at ${move.x + 1},${move.y + 1}`;
-          return `<li><span>#${record.ply}</span><strong>${PLAYERS[move.player].label}</strong><span>${body}</span></li>`;
+            : `${move.pieceId} at ${move.x + 1},${move.y + 1}`;
+          return `<li><span>#${escapeHtml(record.ply)}</span><strong>${PLAYERS[move.player].label}</strong><span>${escapeHtml(body)}</span></li>`;
         }).join("") || `<li class="muted">No moves yet.</li>`}
       </ol>
     </section>
@@ -660,8 +755,8 @@ function render(allowAi = true) {
         <h1>BlokusAI Duo</h1>
       </div>
       <div class="status-card ${finished ? "finished" : ""}">
-        <span>Turn ${gameState.turn}</span>
-        <strong>${thinking ? "AI thinking..." : statusMessage}</strong>
+        <span>Turn ${escapeHtml(gameState.turn)}</span>
+        <strong>${thinking ? "AI thinking..." : escapeHtml(statusMessage)}</strong>
       </div>
     </header>
     <main class="app-shell">
@@ -701,7 +796,6 @@ function bindEvents() {
   document.querySelector("#undo")?.addEventListener("click", undo);
   document.querySelector("#rotate-top")?.addEventListener("click", () => rotateSelected(1));
   document.querySelector("#flip-top")?.addEventListener("click", flipSelected);
-  document.querySelector("#skip-turn")?.addEventListener("click", skipTurn);
   document.querySelector("#copy-json")?.addEventListener("click", copyGameJson);
   document.querySelector("#load-json")?.addEventListener("click", loadGameJson);
   document.querySelector("#toggle-ai")?.addEventListener("click", () => {
@@ -709,10 +803,9 @@ function bindEvents() {
     render();
   });
   document.querySelector("#step-ai")?.addEventListener("click", async () => {
-    paused = false;
-    await maybeStartAiTurn();
-    paused = true;
-    render();
+    // Stay paused and force exactly one move: toggling `paused` around the
+    // await let the render-queued maybeStartAiTurn() start a second think.
+    await maybeStartAiTurn(true);
   });
   document.querySelector("#retry-ai")?.addEventListener("click", () => {
     aiHalted = false;
@@ -726,6 +819,7 @@ function bindEvents() {
 
   document.querySelector("#mode")?.addEventListener("change", (event) => {
     settings.mode = event.target.value;
+    gameEpoch += 1;
     paused = !isAiVsAiMode();
     lastAiStats = null;
     aiHalted = false;
@@ -734,6 +828,7 @@ function bindEvents() {
   });
   document.querySelector("#human-player")?.addEventListener("change", (event) => {
     settings.humanPlayer = Number(event.target.value);
+    gameEpoch += 1;
     aiHalted = false;
     saveSettings();
     render();
@@ -754,6 +849,7 @@ function bindEvents() {
         engine: event.target.value,
         difficulty: event.target.value,
       });
+      gameEpoch += 1;
       aiHalted = false;
       saveSettings();
       render();

@@ -10,10 +10,15 @@ function normalizeValue(scoreDiff) {
   return Math.max(-1, Math.min(1, scoreDiff / 89));
 }
 
-// Terminal value from the perspective of the player to move at `state`.
-function finalValueForToMove(state) {
+// Terminal leaf value in the negamax convention. `advanceTurnOrFinish` does not
+// toggle `currentPlayer` when the game ends, so at a terminal state
+// `state.currentPlayer` is the player who made the final move — the same side
+// to move at the parent node. backup() negates once per ply, so the leaf must
+// report the value from the opponent-of-mover perspective (the notional side
+// to move at the leaf) for the parent to read the score correctly.
+export function finalValueForToMove(state) {
   const [scoreA, scoreB] = scoreState(state);
-  return normalizeValue(state.currentPlayer === 0 ? scoreA - scoreB : scoreB - scoreA);
+  return normalizeValue(state.currentPlayer === 0 ? scoreB - scoreA : scoreA - scoreB);
 }
 
 function rankByPolicy(logits, moves, rng) {
@@ -26,14 +31,25 @@ function rankByPolicy(logits, moves, rng) {
     action: encodeAction(move),
     prior: score,
   }));
-  const top = scored.slice(0, Math.max(1, scored.length));
-  const maxLogit = top[0]?.prior ?? 0;
-  const weights = top.map((entry) => Math.exp(entry.prior - maxLogit));
+  const maxLogit = scored[0]?.prior ?? 0;
+  const weights = scored.map((entry) => Math.exp(entry.prior - maxLogit));
   const total = weights.reduce((sum, value) => sum + value, 0) || 1;
-  return top.map((entry, index) => ({
+  return scored.map((entry, index) => ({
     ...entry,
     prior: weights[index] / total,
   }));
+}
+
+// After truncating to `candidateLimit`, the kept priors sum to < 1, which would
+// globally shrink the PUCT exploration term (and distort the Dirichlet mixture).
+// Renormalize so the kept children form a proper distribution.
+function renormalizePriors(entries) {
+  const total = entries.reduce((sum, entry) => sum + entry.prior, 0);
+  if (!(total > 0)) {
+    const uniform = entries.length > 0 ? 1 / entries.length : 0;
+    return entries.map((entry) => ({ ...entry, prior: uniform }));
+  }
+  return entries.map((entry) => ({ ...entry, prior: entry.prior / total }));
 }
 
 // --- Seeded sampling helpers (Dirichlet root noise + temperature move sampling) ---
@@ -171,7 +187,7 @@ async function expandLeaf(node, config, table, counters, deps, rng) {
   if (!inference.logits || inference.logits.length !== ACTION_SIZE) {
     throw new Error(`Unexpected policy logits shape: ${inference.logits?.length ?? "none"}`);
   }
-  const ranked = rankByPolicy(inference.logits, moves, rng).slice(0, candidateLimit);
+  const ranked = renormalizePriors(rankByPolicy(inference.logits, moves, rng).slice(0, candidateLimit));
   const value = inference.value; // already in node.state.currentPlayer (to-move) perspective
   table.set({ hash, kind: "nn", value, ranked });
   node.children = ranked.map((entry) => createChild(entry.move, entry.action, entry.prior));

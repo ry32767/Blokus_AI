@@ -11,10 +11,15 @@ function normalizeEval(score) {
   return Math.max(-1, Math.min(1, score / 100));
 }
 
-// Terminal value from the perspective of the player to move at `state`.
-function finalValueForToMove(state) {
+// Terminal leaf value in the negamax convention. `advanceTurnOrFinish` does not
+// toggle `currentPlayer` when the game ends, so at a terminal state
+// `state.currentPlayer` is the player who made the final move — the same side
+// to move at the parent node. backup() negates once per ply, so the leaf must
+// report the value from the opponent-of-mover perspective (the notional side
+// to move at the leaf) for the parent to read the score correctly.
+export function finalValueForToMove(state) {
   const [scoreA, scoreB] = scoreState(state);
-  return Math.max(-1, Math.min(1, (state.currentPlayer === 0 ? scoreA - scoreB : scoreB - scoreA) / 89));
+  return Math.max(-1, Math.min(1, (state.currentPlayer === 0 ? scoreB - scoreA : scoreA - scoreB) / 89));
 }
 
 function rankCandidateMoves(state, candidateLimit, rng) {
@@ -71,12 +76,15 @@ function expandLeaf(node, candidateLimit, rng, table, counters) {
   const hash = hashState(node.state);
   const cached = table.get(hash);
   let value;
-  if (cached) {
+  // Only reuse entries this engine wrote: alpha-beta/exact entries are on a
+  // different value scale, and node.move is the edge INTO this node, not a
+  // best move from it — never store it as `bestMove`.
+  if (cached && cached.kind === "mcts_eval") {
     counters.tableHits += 1;
     value = cached.value;
   } else {
     value = normalizeEval(evaluateState(node.state, node.state.currentPlayer));
-    table.set({ hash, depth: 0, value, bound: "exact", bestMove: node.move ?? undefined });
+    table.set({ hash, kind: "mcts_eval", value });
   }
 
   node.children = rankCandidateMoves(node.state, candidateLimit, rng).map(createChild);

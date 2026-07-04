@@ -56,7 +56,10 @@ export function normalizeAiConfig(config = {}) {
     beamWidthOpponent: config.beamWidthOpponent ?? 32,
     candidateLimit: config.candidateLimit ?? config.maxChildren ?? 120,
     maxChildren: config.maxChildren ?? config.candidateLimit ?? 120,
-    simulations: config.simulations ?? 128,
+    // No default simulation cap: the wall-clock budget (timeLimitMs) governs
+    // search effort. A numeric default here silently stopped expert/master
+    // searches long before their time budget was spent.
+    simulations: config.simulations,
     explorationC: config.explorationC ?? 1.2,
     ...config,
     engine: config.engine ?? difficulty,

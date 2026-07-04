@@ -18,6 +18,7 @@ function parseArgs(argv) {
     teacherMs: 25,
     epochs: 1,
     batchSize: 2048,
+    seed: 0,
     cpu: false,
     evaluationGames: 6,
     minWinRate: 0.55,
@@ -34,6 +35,7 @@ function parseArgs(argv) {
     if (value === "--teacher-ms") args.teacherMs = Number(argv[++index]);
     if (value === "--epochs") args.epochs = Number(argv[++index]);
     if (value === "--batch-size") args.batchSize = Number(argv[++index]);
+    if (value === "--seed") args.seed = Number(argv[++index]);
     if (value === "--cpu") {
       const next = argv[index + 1];
       if (next && !next.startsWith("--")) {
@@ -101,6 +103,15 @@ async function runIteration(config, index, bestModelPresent) {
     whiteAi: bestModelPresent ? config.bestDifficulty : "expert",
     blackModel: bestModelPresent ? config.bestModelPath : null,
     whiteModel: bestModelPresent ? config.bestModelPath : null,
+    // Keep MCTS visit distributions as policy targets and vary games across
+    // iterations: without an iteration-dependent seed and exploration noise,
+    // every iteration regenerated a near-identical, exploration-free dataset.
+    policyTargetSource: "visit",
+    seed: (config.seed ?? 0) + (index + 1) * 7919,
+    rootDirichletWeight: 0.25,
+    rootDirichletAlpha: 0.3,
+    mctsSamplingTemperature: 1.0,
+    mctsSamplingPlies: 16,
   });
 
   await runNode("node", [

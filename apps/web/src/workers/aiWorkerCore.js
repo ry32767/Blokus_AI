@@ -24,6 +24,11 @@ export async function handleAiWorkerRequest(
   let decision = await dependencies.decideMove(request.state, request.config);
   if (!dependencies.isLegalMove(request.state, decision.move)) {
     decision = await dependencies.decideFallbackMove(request.state, request.config);
+    if (!dependencies.isLegalMove(request.state, decision.move)) {
+      // Surface as an ERROR instead of posting an illegal move the main
+      // thread would silently reject, stalling the game.
+      throw new Error("AI produced an illegal move (primary and fallback).");
+    }
   }
 
   return {

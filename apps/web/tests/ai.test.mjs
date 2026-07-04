@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { createSuite } from "../../../tests/testHarness.mjs";
-import { ACTION_SIZE, applyMove, createInitialState, encodeAction, generateLegalMoves, isLegalMove } from "../../../packages/core/src/index.js";
+import { ACTION_SIZE, applyMove, createInitialState, encodeAction, generateLegalMoves, isLegalMove, scoreState } from "../../../packages/core/src/index.js";
 import { chooseEndgameAlphaBetaMove, chooseExactEndgameMove } from "../src/ai/alphaBetaAi.js";
 import { chooseBeamSearchMove } from "../src/ai/beamSearchAi.js";
 import { chooseExpertMove, chooseExpertPlusMove, isEndgameSearchable, isExactSolvable, isOpening } from "../src/ai/expertAi.js";
 import { chooseHeuristicMove } from "../src/ai/heuristicAi.js";
-import { chooseMctsMove } from "../src/ai/mctsAi.js";
-import { chooseMasterMove } from "../src/ai/policyValueMctsAi.js";
+import { chooseMctsMove, finalValueForToMove as mctsTerminalValue } from "../src/ai/mctsAi.js";
+import { chooseMasterMove, finalValueForToMove as pvTerminalValue } from "../src/ai/policyValueMctsAi.js";
 import { totalRemainingPieces, TranspositionTable, hashState } from "../src/ai/transpositionTable.js";
 import { AI_DIFFICULTIES, decideDifficultyMove, normalizeAiConfig } from "../src/ai/difficulty.js";
 
@@ -240,6 +240,25 @@ suite.test("exact solver returns a legal move", async () => {
   const decision = await chooseExactEndgameMove(state, { difficulty: "expert_plus", timeLimitMs: 2000 });
   assert.equal(isLegalMove(state, decision.move), true);
   assert.equal(decision.stats.engine, "exact_solver");
+});
+
+suite.test("terminal leaf values follow the negamax convention", () => {
+  // Play a full game: at the terminal state, `currentPlayer` is the player who
+  // made the final move (advanceTurnOrFinish does not toggle on finish). The
+  // MCTS leaf value must be from the OTHER player's perspective so that one
+  // backup negation returns the mover's true score. A sign flip here made both
+  // engines prefer losing terminations (and avoid winning ones).
+  let state = createInitialState("fixedStart");
+  while (state.status === "playing") {
+    state = applyMove(state, generateLegalMoves(state)[0]);
+  }
+  const [scoreA, scoreB] = scoreState(state);
+  const mover = state.currentPlayer;
+  const moverDiff = mover === 0 ? scoreA - scoreB : scoreB - scoreA;
+  const expectedLeaf = Math.max(-1, Math.min(1, -moverDiff / 89));
+  assert.notEqual(moverDiff, 0, "fixture game should not end in a draw");
+  assert.equal(mctsTerminalValue(state), expectedLeaf);
+  assert.equal(pvTerminalValue(state), expectedLeaf);
 });
 
 suite.test("transposition hashing is stable for identical positions", () => {

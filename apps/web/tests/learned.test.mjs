@@ -38,12 +38,27 @@ function fakeOrt() {
   };
 }
 
+// Mirrors scripts/run-python.mjs resolution: without the PATH lookup the
+// JS<->Python parity tests silently self-passed on any machine that only has
+// `python3` on PATH (i.e. most Linux/CI environments).
 function pythonExecutable() {
-  const candidates = [
+  const fileCandidates = [
     process.env.BLOKUS_PYTHON,
-    join(process.env.USERPROFILE || "", ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe"),
+    process.platform === "win32"
+      ? join(process.cwd(), ".venv", "Scripts", "python.exe")
+      : join(process.cwd(), ".venv", "bin", "python"),
+    process.platform === "win32"
+      ? join(process.env.USERPROFILE || "", ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe")
+      : null,
   ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+  const fromFiles = fileCandidates.find((candidate) => existsSync(candidate));
+  if (fromFiles) return fromFiles;
+  const pathDirs = (process.env.PATH || "").split(process.platform === "win32" ? ";" : ":");
+  for (const command of ["python3", "python"]) {
+    const name = process.platform === "win32" ? `${command}.exe` : command;
+    if (pathDirs.some((dir) => dir && existsSync(join(dir, name)))) return command;
+  }
+  return null;
 }
 
 suite.test("learned ai chooses the highest-logit legal move", async () => {

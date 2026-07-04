@@ -14,6 +14,11 @@ export async function loadOrtModule(deps = {}) {
   if (deps.ortModule) return deps.ortModule;
   if (!ortModulePromise) {
     ortModulePromise = import(new URL("../../public/vendor/onnxruntime-web/ort.min.mjs", import.meta.url));
+    // Do not cache a rejected promise: a transient load failure would
+    // otherwise disable ORT for the whole session.
+    ortModulePromise.catch(() => {
+      ortModulePromise = null;
+    });
   }
   return ortModulePromise;
 }
@@ -47,7 +52,13 @@ export async function loadModelSession(kind, config = {}, deps = {}) {
   }
   const key = sessionCacheKey(kind, modelUrl);
   if (!sessionCache.has(key)) {
-    sessionCache.set(key, createSession(kind, modelUrl, deps));
+    const sessionPromise = createSession(kind, modelUrl, deps);
+    // Evict on rejection so one flaky fetch doesn't permanently poison the
+    // cache and silently downgrade learned/master to the heuristic fallback.
+    sessionPromise.catch(() => {
+      if (sessionCache.get(key) === sessionPromise) sessionCache.delete(key);
+    });
+    sessionCache.set(key, sessionPromise);
   }
   return sessionCache.get(key);
 }

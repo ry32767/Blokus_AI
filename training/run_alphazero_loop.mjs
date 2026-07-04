@@ -9,8 +9,21 @@ import { eloGateDecision, sprtGateDecision } from "./elo.mjs";
 import { ensureModelRegistry, getActiveModel, promoteModel, registerModel } from "./model_registry.mjs";
 import { runDistributedSelfPlay } from "./run_distributed_selfplay.mjs";
 import { sampleReplayBufferToDataset } from "./replay_buffer.mjs";
+import { normalizeSeed } from "./seeded_rng.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+
+// Hash-mix the base seed with the iteration index. The previous
+// `seed + iterationIndex * 1000003` used the same stride as the per-worker
+// offset (WORKER_SEED_STRIDE), so iteration i / worker j+1 collided exactly
+// with iteration i+1 / worker j and whole games were regenerated bit-identical
+// whenever the active model did not change between iterations.
+function iterationSeed(baseSeed, iterationIndex) {
+  let x = (normalizeSeed(baseSeed) + Math.imul(iterationIndex + 1, 0x9e3779b9)) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b) >>> 0;
+  return (x ^ (x >>> 16)) >>> 0;
+}
 const defaultBrowserModel = join(root, "apps", "web", "public", "models", "blokus_policy_value.onnx");
 
 function parseArgs(argv) {
@@ -232,7 +245,7 @@ async function runIteration(config, iterationIndex) {
     workers: config.workers,
     games: config.games,
     teacherMs: config.teacherMs,
-    seed: config.seed + iterationIndex * 1000003,
+    seed: iterationSeed(config.seed, iterationIndex),
     difficulty: config.selfplayAi,
     modelPath: activeModelPath,
     blackAi: selfplayBlackAi,

@@ -136,10 +136,6 @@ async function main() {
     args.onnxOut,
   ]);
 
-  if (args.publishModel) {
-    await copyFile(args.onnxOut, defaultBrowserModel);
-  }
-
   const trainingSummary = JSON.parse(await readFile(join(args.checkpointDir, "train_summary.json"), "utf-8"));
   const arenaSummary = await runArena({
     games: args.evaluationGames,
@@ -162,6 +158,19 @@ async function main() {
     },
   });
 
+  // Publish only AFTER the arena, and only when the candidate did not lose it:
+  // copying an unevaluated model over the public one contradicted the repo's
+  // publish policy (public models change only for vetted candidates).
+  const candidateRecord = arenaSummary.contestants?.candidate ?? { wins: 0, losses: 0 };
+  const publishAccepted = args.publishModel && candidateRecord.wins >= candidateRecord.losses;
+  if (publishAccepted) {
+    await copyFile(args.onnxOut, defaultBrowserModel);
+  } else if (args.publishModel) {
+    console.log(
+      `[publish] skipped: candidate lost the evaluation arena (${candidateRecord.wins}W-${candidateRecord.losses}L).`,
+    );
+  }
+
   const summary = {
     generatedAt: new Date().toISOString(),
     dataset: {
@@ -176,7 +185,8 @@ async function main() {
     export: {
       onnxOut: args.onnxOut,
       publishModel: args.publishModel,
-      browserModelPath: args.publishModel ? defaultBrowserModel : null,
+      publishAccepted,
+      browserModelPath: publishAccepted ? defaultBrowserModel : null,
     },
     arena: arenaSummary,
   };

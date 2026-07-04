@@ -8,41 +8,15 @@ import {
   generateLegalMoves,
 } from "../../../../packages/core/src/index.js";
 import { chooseExpertMove } from "./expertAi.js";
+// Session loading is delegated to modelRunner: it keys the cache by model URL
+// (a module-level singleton here ignored config.modelUrl after the first call)
+// and evicts rejected promises so a transient load failure doesn't disable
+// the learned engine for the whole session.
+import { loadModelSession, loadOrtModule, now } from "./modelRunner.js";
 import { resolveRng } from "./random.js";
 
-let sessionPromise = null;
-
-function now() {
-  return typeof performance === "undefined" ? Date.now() : performance.now();
-}
-
-async function loadOrtModule() {
-  return import(new URL("../../public/vendor/onnxruntime-web/ort.min.mjs", import.meta.url));
-}
-
 async function loadSession(config = {}, deps = {}) {
-  if (deps.sessionFactory) {
-    return deps.sessionFactory();
-  }
-
-  if (!sessionPromise) {
-    sessionPromise = (async () => {
-      const ort = deps.ortModule ?? await loadOrtModule();
-      const wasmBase = new URL("../../public/vendor/onnxruntime-web/", import.meta.url).href;
-      if (ort.env?.wasm) {
-        ort.env.wasm.wasmPaths = wasmBase;
-      }
-      return ort.InferenceSession.create(
-        config.modelUrl ?? new URL("../../public/models/blokus_policy.onnx", import.meta.url).href,
-        {
-          executionProviders: ["wasm"],
-          graphOptimizationLevel: "all",
-        },
-      );
-    })();
-  }
-
-  return sessionPromise;
+  return loadModelSession("policy", config, deps);
 }
 
 function selectBestLegalAction(logits, legalActions, rng) {
@@ -91,7 +65,7 @@ export async function chooseLearnedMove(state, config = {}, deps = {}) {
   const legalByAction = new Map(legalMoves.map((move) => [encodeAction(move), move]));
 
   try {
-    const ort = deps.ortModule ?? await loadOrtModule();
+    const ort = await loadOrtModule(deps);
     const session = await loadSession(config, { ...deps, ortModule: ort });
     const inputTensor = new ort.Tensor(
       "float32",
